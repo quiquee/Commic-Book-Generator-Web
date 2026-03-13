@@ -14,9 +14,8 @@ import { useApiKey } from './useApiKey';
 import { ApiKeyDialog } from './ApiKeyDialog';
 
 // --- Constants ---
-const MODEL_V3 = "gemini-3-pro-image-preview";
-const MODEL_IMAGE_GEN_NAME = MODEL_V3;
-const MODEL_TEXT_NAME = MODEL_V3;
+const MODEL_TEXT_NAME = "gemini-3-flash-preview";
+const MODEL_IMAGE_GEN_NAME = "gemini-2.5-flash-image";
 
 const App: React.FC = () => {
   // --- API Key Hook ---
