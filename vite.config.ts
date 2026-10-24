@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react';
 // The Gemini API key lives only on the server (proxy at /api/gemini); nothing secret is bundled here.
 export default defineConfig({
   server: {
-    port: 3000,
+    port: 7000,
     host: '0.0.0.0',
+    allowedHosts: ['bicho','bicho.hcpartners.ch','localhost'],
   },
   plugins: [react()],
   build: {
