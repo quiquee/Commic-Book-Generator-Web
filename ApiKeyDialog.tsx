@@ -21,19 +21,19 @@ export const ApiKeyDialog: React.FC<ApiKeyDialogProps> = ({ onContinue }) => {
         </div>
 
         <h2 className="font-comic text-5xl text-red-600 mb-4 uppercase tracking-wide leading-none" style={{textShadow: '2px 2px 0px black'}}>
-          Secret Identity Required!
+          ¡Se necesita una identidad secreta!
         </h2>
         
         <p className="font-comic text-xl text-black mb-6 leading-relaxed">
-          Halt, Citizen! To access the infinite multiverse (and generate these amazing comics), you need a <span className="font-bold bg-yellow-200 px-1 border border-black">Paid API Key</span>.
+          ¡Alto, ciudadano! Para acceder al multiverso infinito y generar estos cómics increíbles, necesitas una <span className="font-bold bg-yellow-200 px-1 border border-black">clave de API de pago</span>.
         </p>
 
         <div className="bg-gray-100 border-2 border-black border-dashed p-4 mb-6 text-left relative">
-             <div className="absolute -top-3 left-4 bg-black text-white px-2 font-comic text-sm uppercase">Mission Briefing</div>
+             <div className="absolute -top-3 left-4 bg-black text-white px-2 font-comic text-sm uppercase">Informe de misión</div>
              <p className="font-sans text-sm text-gray-800 leading-relaxed">
-                Gemini 3 Pro Image Preview is a powerful model that require a billing-enabled project to operate. 
+                Gemini 3 Pro Image Preview es un modelo potente que requiere un proyecto con facturación habilitada para funcionar.
                 <br/>
-                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-blue-600 underline hover:text-blue-800 font-bold">Read the Billing Docs &rarr;</a>
+                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-blue-600 underline hover:text-blue-800 font-bold">Consulta la documentación de facturación &rarr;</a>
              </p>
         </div>
 
@@ -41,7 +41,7 @@ export const ApiKeyDialog: React.FC<ApiKeyDialogProps> = ({ onContinue }) => {
           onClick={onContinue}
           className="comic-btn bg-blue-500 text-white text-2xl px-8 py-4 w-full hover:bg-blue-400 transition-transform active:scale-95 uppercase tracking-widest"
         >
-          Unlock The Multiverse
+          Desbloquear el multiverso
         </button>
         
         <p className="text-center text-xs text-gray-400 mt-4 font-mono">ERROR_CODE: PAYWALL_VILLAIN_DETECTED</p>

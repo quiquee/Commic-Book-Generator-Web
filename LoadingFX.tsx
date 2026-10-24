@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const LOADING_FX = ["POW!", "BAM!", "ZAP!", "KRAK!", "SKREEE!", "WHOOSH!", "THWIP!", "BOOM!"];
+const LOADING_FX = ["¡PUM!", "¡ZAS!", "¡BAM!", "¡CRAC!", "¡CATAPLÚM!", "¡FUUUSH!", "¡ZAP!", "¡BOOM!"];
 
 export const LoadingFX: React.FC = () => {
     const [particles, setParticles] = useState<{id: number, text: string, x: string, y: string, rot: number, color: string}[]>([]);
@@ -42,7 +42,7 @@ export const LoadingFX: React.FC = () => {
                     {p.text}
                 </div>
             ))}
-            <p className="absolute bottom-24 inset-x-0 text-center font-comic text-xl text-gray-400 animate-pulse z-0 tracking-widest">INKING PAGE...</p>
+            <p className="absolute bottom-24 inset-x-0 text-center font-comic text-xl text-gray-400 animate-pulse z-0 tracking-widest">DIBUJANDO LA PÁGINA...</p>
         </div>
     );
 };

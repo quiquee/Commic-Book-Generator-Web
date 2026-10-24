@@ -22,21 +22,11 @@ export const TONES = [
 ];
 
 export const LANGUAGES = [
-    { code: 'en-US', name: 'English (US)' },
-    { code: 'ar-EG', name: 'Arabic (Egypt)' },
-    { code: 'de-DE', name: 'German (Germany)' },
-    { code: 'es-MX', name: 'Spanish (Mexico)' },
-    { code: 'fr-FR', name: 'French (France)' },
-    { code: 'hi-IN', name: 'Hindi (India)' },
-    { code: 'id-ID', name: 'Indonesian (Indonesia)' },
-    { code: 'it-IT', name: 'Italian (Italy)' },
-    { code: 'ja-JP', name: 'Japanese (Japan)' },
-    { code: 'ko-KR', name: 'Korean (South Korea)' },
-    { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-    { code: 'ru-RU', name: 'Russian (Russia)' },
-    { code: 'ua-UA', name: 'Ukrainian (Ukraine)' },
-    { code: 'vi-VN', name: 'Vietnamese (Vietnam)' },
-    { code: 'zh-CN', name: 'Chinese (China)' }
+    { code: 'es-ES', name: 'Spanish (Spain)', label: 'Español' },
+    { code: 'en-US', name: 'English (US)', label: 'Inglés' },
+    { code: 'fr-FR', name: 'French (France)', label: 'Francés' },
+    { code: 'gl-ES', name: 'Galician (Spain)', label: 'Gallego' },
+    { code: 'de-DE', name: 'German (Germany)', label: 'Alemán' }
 ];
 
 export interface ComicFace {
@@ -49,6 +39,7 @@ export interface ComicFace {
   isLoading: boolean;
   pageIndex?: number;
   isDecisionPage?: boolean;
+  version?: number;
 }
 
 export interface Beat {
