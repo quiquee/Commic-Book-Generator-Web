@@ -3,7 +3,9 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
-import { createAppServer } from './server.mjs';
+import { createAppServer, parsePublicBaseUrl } from './server.mjs';
+import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
 const invitationBody = {
@@ -23,8 +25,11 @@ let storiesDir;
 let server;
 let baseUrl;
 
-async function startServer() {
-  server = createAppServer({ dataDir, storiesDir });
+async function startServer(options = {}) {
+  server = createAppServer({
+    dataDir, storiesDir, usageDir: join(dataDir, 'usage'),
+    auditFile: join(dataDir, 'audit.log'), ...options,
+  });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
@@ -215,7 +220,7 @@ test('persists invitations across server restarts and expires old records', asyn
 
 test('serves the Vite SPA through middleware in development mode', async () => {
   await stopServer();
-  server = createAppServer({ dataDir, dev: true });
+  server = createAppServer({ dataDir, usageDir: join(dataDir, 'usage'), dev: true });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
@@ -468,4 +473,109 @@ test('validates story input, face identifiers and JPEG images; unlinked stories 
     body: { faceId: 'page-2', choice: 'No existe' },
   });
   assert.equal(invalidChoice.response.status, 404);
+});
+
+test('exposes the configured public base URL read-only and defaults to null', async () => {
+  const unset = await api('/api/config');
+  assert.equal(unset.response.status, 200);
+  assert.deepEqual(unset.payload, { baseUrl: null, geminiProxy: false });
+  assert.equal((await api('/api/config', { method: 'POST', body: {} })).response.status, 405);
+
+  const configured = createAppServer({ dataDir, storiesDir, usageDir: join(dataDir, 'usage'), publicBaseUrl: ' https://comics.example.com/app/?x=1#y ' });
+  await new Promise((resolve) => configured.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${configured.address().port}/api/config`);
+    assert.deepEqual(await response.json(), { baseUrl: 'https://comics.example.com/app', geminiProxy: false });
+  } finally {
+    await new Promise((resolve) => configured.close(resolve));
+  }
+});
+
+test('validates the public base URL configuration', () => {
+  assert.equal(parsePublicBaseUrl(undefined), null);
+  assert.equal(parsePublicBaseUrl('  '), null);
+  assert.equal(parsePublicBaseUrl('http://192.168.1.10:3000/'), 'http://192.168.1.10:3000');
+  for (const invalid of ['example.com', 'javascript:alert(1)', 'ftp://example.com', 'https://user:pass@example.com']) {
+    assert.throws(() => parsePublicBaseUrl(invalid), /PUBLIC_BASE_URL/);
+  }
+  assert.throws(() => createAppServer({ dataDir, storiesDir, publicBaseUrl: 'no-es-una-url' }), /PUBLIC_BASE_URL/);
+});
+
+test('wires proxy drafts into stories and retains owner/admin deletion accounting', async (context) => {
+  const upstreamRequests = [];
+  const upstream = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    upstreamRequests.push({ headers: req.headers, body: JSON.parse(Buffer.concat(chunks)), path: req.url });
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({
+      usageMetadata: { promptTokenCount: 14, candidatesTokenCount: 20, thoughtsTokenCount: 813, totalTokenCount: 847 },
+    }));
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  context.after(() => new Promise((resolve) => upstream.close(resolve)));
+  await stopServer();
+  await startServer({
+    geminiApiKey: 'PRIVATE_UPSTREAM_KEY',
+    geminiUpstream: `http://127.0.0.1:${upstream.address().port}`,
+    adminPassword: 'PRIVATE_ADMIN_PASSWORD',
+  });
+  assert.equal((await api('/api/config')).payload.geminiProxy, true);
+  const draftId = randomUUID();
+  const route = '/api/gemini/v1beta/models/gemini-3.8-flash:generateContent';
+  const draft = await api(route, {
+    method: 'POST', body: { contents: [] },
+    headers: { 'X-Draft-Id': draftId, 'X-Usage-Op': 'title', 'X-Goog-Api-Key': 'proxy' },
+  });
+  assert.equal(draft.response.status, 200);
+  const invitation = (await createInvitation()).payload;
+  const story = (await api('/api/stories', {
+    method: 'POST',
+    body: { ...storyBody({ id: invitation.id, ownerToken: invitation.ownerToken }), draftId },
+  })).payload;
+  assert.ok(story.id);
+  const accounted = JSON.parse(await readFile(join(dataDir, 'usage', `${story.id}.json`), 'utf8'));
+  assert.equal(accounted.totals.calls, 1);
+  assert.equal(accounted.events[0].op, 'title');
+  await assert.rejects(readFile(join(dataDir, 'usage', `draft-${draftId}.json`)), { code: 'ENOENT' });
+  const guestCall = await api(route, {
+    method: 'POST', body: {},
+    headers: { 'X-Story-Id': story.id, 'X-Story-Token': invitation.guestToken },
+  });
+  assert.equal(guestCall.response.status, 401);
+  const ownerCall = await api(route, {
+    method: 'POST', body: { contents: [] },
+    headers: { 'X-Story-Id': story.id, 'X-Story-Token': story.ownerToken, 'X-Usage-Op': 'beat:3' },
+  });
+  assert.equal(ownerCall.response.status, 200);
+  assert.equal(upstreamRequests.length, 2);
+  assert.equal(upstreamRequests[0].headers['x-goog-api-key'], 'PRIVATE_UPSTREAM_KEY');
+  assert.equal(upstreamRequests[1].headers['x-story-token'], undefined);
+  const login = await api('/api/admin/login', {
+    method: 'POST', body: { password: 'PRIVATE_ADMIN_PASSWORD' },
+  });
+  assert.equal(login.response.status, 200);
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+  const detail = await api(`/api/admin/stories/${story.id}`, { headers: { cookie } });
+  assert.equal(detail.response.status, 200);
+  assert.equal(detail.payload.usage.totals.calls, 2);
+  for (const secret of [story.ownerToken, invitation.ownerToken, invitation.guestToken, 'PRIVATE_UPSTREAM_KEY']) {
+    assert.equal(JSON.stringify(detail.payload).includes(secret), false);
+  }
+  assert.equal((await api(`/api/stories/${story.id}`, { method: 'DELETE', token: story.ownerToken })).response.status, 204);
+  const deleted = await api(`/api/admin/stories/${story.id}`, { headers: { cookie } });
+  assert.equal(deleted.payload.status, 'deleted');
+  assert.equal(deleted.payload.deletedBy, 'owner');
+  assert.equal(deleted.payload.usage.totals.tokens.total, 1694);
+
+  const another = (await api('/api/stories', { method: 'POST', body: storyBody() })).payload;
+  const adminDeletion = await api(`/api/admin/stories/${another.id}`, {
+    method: 'DELETE', headers: { cookie, 'X-Admin-Request': '1' },
+  });
+  assert.equal(adminDeletion.response.status, 204);
+  const adminDeleted = await api(`/api/admin/stories/${another.id}`, { headers: { cookie } });
+  assert.equal(adminDeleted.payload.deletedBy, 'admin');
+  const audit = (await readFile(join(dataDir, 'audit.log'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.ok(audit.some((entry) => entry.action === 'story_delete' && entry.storyId === another.id));
+  assert.equal((await stat(join(dataDir, 'usage', '_daily.json'))).mode & 0o777, 0o600);
 });

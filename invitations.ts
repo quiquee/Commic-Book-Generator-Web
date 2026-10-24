@@ -38,7 +38,6 @@ export interface JoinCredentials {
 export const storageKeys = {
     hero: 'infinite-heroes.hero',
     hostName: 'infinite-heroes.host-name',
-    baseUrl: 'infinite-heroes.base-url',
     invitations: 'infinite-heroes.invitations'
 };
 
@@ -63,6 +62,33 @@ export function normalizeBaseUrl(value: string): string {
     url.search = '';
     url.hash = '';
     return url.href.replace(/\/$/, '');
+}
+
+export interface ServerConfig {
+    baseUrl: string | null;
+    geminiProxy: boolean | null;
+}
+
+// Public server settings; null fields mean "unknown" (for example when only the static frontend is served).
+export async function fetchServerConfig(signal?: AbortSignal): Promise<ServerConfig> {
+    const response = await fetch('/api/config', { signal });
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+        return { baseUrl: null, geminiProxy: null };
+    }
+    const result: unknown = await response.json();
+    const field = (name: string): unknown => result && typeof result === 'object' && name in result
+        ? (result as Record<string, unknown>)[name] : null;
+    const baseUrl = field('baseUrl');
+    const geminiProxy = field('geminiProxy');
+    return {
+        baseUrl: typeof baseUrl === 'string' && baseUrl ? normalizeBaseUrl(baseUrl) : null,
+        geminiProxy: typeof geminiProxy === 'boolean' ? geminiProxy : null
+    };
+}
+
+// Server-configured public base URL (PUBLIC_BASE_URL); null means "use the URL the app is opened with".
+export async function fetchPublicBaseUrl(signal?: AbortSignal): Promise<string | null> {
+    return (await fetchServerConfig(signal)).baseUrl;
 }
 
 export function invitationUrl(baseUrl: string, keys: InvitationKeys): string {

@@ -132,6 +132,16 @@ export interface CreateStoryBody {
     settings: StorySettings;
     tone: string;
     invitation: { id: string; ownerToken: string } | null;
+    draftId?: string;
+}
+
+// crypto.randomUUID() is unavailable on plain-http LAN addresses, so build a v4 UUID from getRandomValues.
+export function newDraftId(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export function createStory(body: CreateStoryBody): Promise<StoryKey> {
@@ -166,11 +176,6 @@ export function deleteStory(id: string, auth: StoryAuth): Promise<void> {
 export function listGuestStories(invitationId: string, token: string, signal?: AbortSignal): Promise<StorySummary[]> {
     return invitationRequest<{ stories?: StorySummary[] }>(`/${invitationId}/join`, token, undefined, signal)
         .then(result => result.stories ?? []);
-}
-
-export function storyTitle(hostName: string, guestName: string, genreLabel: string): string {
-    const cast = guestName ? `${hostName} y ${guestName}` : hostName;
-    return `${genreLabel} · ${cast}`.slice(0, 120);
 }
 
 export function formatDate(timestamp: number): string {

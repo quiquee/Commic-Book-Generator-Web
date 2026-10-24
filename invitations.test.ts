@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { invitationRequest, invitationUrl, normalizeBaseUrl } from './invitations.ts';
+import { fetchPublicBaseUrl, invitationRequest, invitationUrl, normalizeBaseUrl } from './invitations.ts';
 import { LANGUAGES } from './types.ts';
 
 test('offers exactly the five requested languages with Spanish as the default', () => {
@@ -58,4 +58,16 @@ test('reports when a static-only frontend is used without the invitation server'
         headers: { 'content-type': 'text/html' }
     }));
     await assert.rejects(invitationRequest('/id'), /servidor de invitaciones no está disponible/);
+});
+
+test('reads the server-configured base URL and falls back to null when absent or unavailable', async context => {
+    const fetch = context.mock.method(globalThis, 'fetch', async () => Response.json({ baseUrl: 'https://comics.example.com/' }));
+    assert.equal(await fetchPublicBaseUrl(), 'https://comics.example.com');
+    assert.equal(fetch.mock.calls[0].arguments[0], '/api/config');
+    fetch.mock.mockImplementation(async () => Response.json({ baseUrl: null }));
+    assert.equal(await fetchPublicBaseUrl(), null);
+    fetch.mock.mockImplementation(async () => new Response('<html></html>', { headers: { 'content-type': 'text/html' } }));
+    assert.equal(await fetchPublicBaseUrl(), null);
+    fetch.mock.mockImplementation(async () => new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } }));
+    assert.equal(await fetchPublicBaseUrl(), null);
 });

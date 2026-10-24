@@ -42,6 +42,13 @@ interface SetupProps {
     launchLabel?: string;
     friendPhotoLocked?: boolean;
     children?: React.ReactNode;
+    titleField?: {
+        value: string;
+        busy: boolean;
+        stale: boolean;
+        onChange: (value: string) => void;
+        onPropose: () => void;
+    };
 }
 
 const Footer = () => {
@@ -71,7 +78,7 @@ const Footer = () => {
         </div>
         <div className="flex items-center gap-4 mt-2 md:mt-0">
             <span className="text-gray-500 text-sm hidden md:inline">Creado con Gemini</span>
-            <a href="https://x.com/ammaar" target="_blank" rel="noopener noreferrer" className="text-white hover:text-yellow-400 transition-colors text-xl">Creado por @ammaar</a>
+            <a href="https://x.com/quiquee" target="_blank" rel="noopener noreferrer" className="text-white hover:text-yellow-400 transition-colors text-xl">Creado por @quiquee</a>
         </div>
     </div>
   );
@@ -199,6 +206,21 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                     <div className="mb-2">
                                         <p className="font-comic text-base mb-1 font-bold text-gray-800">PREMISA</p>
                                         <textarea value={props.customPremise} onChange={(e) => props.onPremiseChange(e.target.value)} placeholder="Escribe la premisa de tu historia..." className="w-full p-1 border-2 border-black font-comic text-lg h-16 resize-none shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                                    </div>
+                                )}
+
+                                {props.titleField && !props.guestMode && (
+                                    <div className="mb-2">
+                                        <p className="font-comic text-base mb-1 font-bold text-gray-800">TÍTULO DEL CÓMIC</p>
+                                        <div className="flex gap-2">
+                                            <input aria-label="Título del cómic" maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder="Se propondrá uno al empezar" className="flex-1 min-w-0 p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                                            <button type="button" onClick={props.titleField.onPropose} disabled={props.titleField.busy || props.isTransitioning} className="comic-btn bg-purple-600 text-white text-sm px-3 py-1 whitespace-nowrap disabled:bg-gray-400">
+                                                {props.titleField.busy ? 'Buscando...' : props.titleField.value ? 'Otro título' : 'Proponer título'}
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-700 mt-1">
+                                            {props.titleField.stale ? 'Has cambiado la historia: se propondrá un título nuevo al empezar, salvo que escribas uno.' : 'Gemini propone un título distinto para cada cómic; puedes editarlo.'}
+                                        </p>
                                     </div>
                                 )}
                             </div>

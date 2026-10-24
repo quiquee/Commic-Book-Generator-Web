@@ -4,9 +4,10 @@ import { fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory,
 
 interface StoryLibraryProps {
     onOpen: (storyId: string) => void;
+    onTitlesLoaded?: (titles: string[]) => void;
 }
 
-export function StoryLibrary({ onOpen }: StoryLibraryProps) {
+export function StoryLibrary({ onOpen, onTitlesLoaded }: StoryLibraryProps) {
     const [keys, setKeys] = useState<StoryKey[]>([]);
     const [stories, setStories] = useState<Record<string, StoryMeta | { missing: true }>>({});
     const [error, setError] = useState('');
@@ -36,9 +37,10 @@ export function StoryLibrary({ onOpen }: StoryLibraryProps) {
             });
             setStories(next);
             setError(problems[0] ? `No se pudieron cargar algunos cómics: ${problems[0]}` : '');
+            onTitlesLoaded?.(Object.values(next).flatMap(meta => 'missing' in meta ? [] : [meta.title]));
         });
         return () => controller.abort();
-    }, [keys]);
+    }, [keys, onTitlesLoaded]);
 
     const forget = (id: string) => {
         const updated = keys.filter(key => key.id !== id);

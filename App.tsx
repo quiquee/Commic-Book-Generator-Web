@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { GENRES, TONES, LANGUAGES, Persona } from './types';
-import { Setup, GENRE_LABELS } from './Setup';
+import { Setup } from './Setup';
 import { Book } from './Book';
 import { useApiKey } from './useApiKey';
 import { ApiKeyDialog } from './ApiKeyDialog';
@@ -14,14 +14,26 @@ import { InvitationPanel } from './InvitationPanel';
 import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
 import { StoryView } from './StoryView';
-import { errorMessage, photoFromFile, storageKeys, type Invitation, type InvitationResponse } from './invitations';
-import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, saveStoryKeys, storyTitle, type StoryAuth } from './stories';
+import { errorMessage, fetchServerConfig, photoFromFile, storageKeys, type Invitation, type InvitationResponse } from './invitations';
+import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth } from './stories';
+import { apiErrorMessage, createAI, fatalGenerationMessage, generateTitleCandidates, isApiKeyError } from './generation';
+import { cleanTitle, isTitleTaken, loadTitleHistory, pickUniqueTitle, rememberTitle } from './titles';
 
 interface LinkedInvitation {
   id: string;
   ownerToken: string;
   hostName: string;
   guestName: string;
+}
+
+function pickTone(genre: string): string {
+  let availableTones = TONES;
+  if (genre === "Teen Drama / Slice of Life" || genre === "Lighthearted Comedy") {
+      availableTones = TONES.filter(t => t.includes("CASUAL") || t.includes("WHOLESOME") || t.includes("QUIPPY"));
+  } else if (genre === "Classic Horror") {
+      availableTones = TONES.filter(t => t.includes("INNER-MONOLOGUE") || t.includes("OPERATIC"));
+  }
+  return availableTones[Math.floor(Math.random() * availableTones.length)];
 }
 
 const App: React.FC = () => {
@@ -34,6 +46,13 @@ const App: React.FC = () => {
   const [customPremise, setCustomPremise] = useState("");
   const [richMode, setRichMode] = useState(true);
   const [linkedInvitation, setLinkedInvitation] = useState<LinkedInvitation | null>(null);
+  const [title, setTitle] = useState('');
+  const [titleSource, setTitleSource] = useState<'gemini' | 'manual' | null>(null);
+  const [titleStale, setTitleStale] = useState(false);
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
+  // Groups the calls made before the comic exists (title proposals) so their usage is attributed to it later.
+  const [draftId, setDraftId] = useState(newDraftId);
   const [appError, setAppError] = useState('');
   const [route, setRoute] = useState(getRoute);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -53,6 +72,11 @@ const App: React.FC = () => {
     } catch (error) {
       setAppError(`No se pudo recuperar tu foto: ${errorMessage(error)}`);
     }
+    fetchServerConfig()
+      .then(config => {
+        if (config.geminiProxy === false) setAppError('El servidor no tiene GEMINI_API_KEY configurada: no se podrán generar títulos ni cómics. Defínela en .env.local y reinicia el servidor.');
+      })
+      .catch(() => { /* the API is reported by the actions that need it */ });
     const onHashChange = () => setRoute(getRoute());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -61,6 +85,10 @@ const App: React.FC = () => {
   const resetSetup = useCallback(() => {
     setFriend(null);
     setLinkedInvitation(null);
+    setTitle('');
+    setTitleSource(null);
+    setTitleStale(false);
+    setTitleBusy(false);
     setIsTransitioning(false);
     setShowApiKeyDialog(false);
     setSetupRevision(revision => revision + 1);
@@ -72,6 +100,58 @@ const App: React.FC = () => {
     if (route.story && route.join && route.token) navigate({ join: route.join, token: route.token });
     else navigate({});
   }, [resetSetup, route]);
+
+  // A Gemini title was written for a specific genre/premise/language; changing them makes it stale.
+  const changeStorySetting = <T,>(setter: (value: T) => void) => (value: T) => {
+    setter(value);
+    if (titleSource === 'gemini') setTitleStale(true);
+  };
+
+  const forbiddenTitles = useCallback(() => [...new Set([...loadTitleHistory(), ...libraryTitles])], [libraryTitles]);
+
+  // Up to three rounds of candidates; a numbered variant is accepted only as a last resort.
+  const generateUniqueTitle = async (genre: string, premise: string, language: string, hostName: string, guestName: string): Promise<string> => {
+    const ai = createAI({ kind: 'draft', draftId });
+    const forbidden = forbiddenTitles();
+    const request = { settings: { genre, language, premise, richMode }, tone: pickTone(genre), hostName, guestName, forbidden };
+    let lastCandidates: unknown[] = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      lastCandidates = await generateTitleCandidates(ai, request);
+      const fresh = lastCandidates.map(cleanTitle).find(candidate => candidate && !isTitleTaken(candidate, forbidden));
+      if (fresh) return fresh;
+    }
+    const numbered = pickUniqueTitle(lastCandidates, forbidden);
+    if (!numbered) throw new Error('Gemini no consiguió proponer un título nuevo. Inténtalo de nuevo o escribe uno.');
+    return numbered;
+  };
+
+  const currentNames = () => ({
+    hostName: linkedInvitation?.hostName || localStorage.getItem(storageKeys.hostName) || 'Protagonista',
+    guestName: linkedInvitation?.guestName || (friend ? 'Coprotagonista' : '')
+  });
+
+  const proposeTitle = async () => {
+    if (titleBusy) return;
+    if (selectedGenre === 'Custom' && !customPremise.trim()) {
+      setAppError('Escribe la premisa de la historia antes de proponer un título.');
+      return;
+    }
+    if (!(await validateApiKey())) return;
+    setTitleBusy(true);
+    setAppError('');
+    try {
+      const { hostName, guestName } = currentNames();
+      const proposed = await generateUniqueTitle(selectedGenre, customPremise, selectedLanguage, hostName, guestName);
+      setTitle(proposed);
+      setTitleSource('gemini');
+      setTitleStale(false);
+    } catch (error) {
+      if (isApiKeyError(error)) setShowApiKeyDialog(true);
+      else setAppError(`No se pudo proponer un título: ${fatalGenerationMessage(error) ?? apiErrorMessage(error)}`);
+    } finally {
+      setTitleBusy(false);
+    }
+  };
 
   const acceptInvitation = (invitation: Invitation, response: InvitationResponse, ownerToken: string) => {
     setFriend({ ...response.persona, desc: response.name });
@@ -91,30 +171,48 @@ const App: React.FC = () => {
         return;
     }
     setAppError('');
-    setIsTransitioning(true);
+    const { hostName, guestName } = currentNames();
 
-    let availableTones = TONES;
-    if (selectedGenre === "Teen Drama / Slice of Life" || selectedGenre === "Lighthearted Comedy") {
-        availableTones = TONES.filter(t => t.includes("CASUAL") || t.includes("WHOLESOME") || t.includes("QUIPPY"));
-    } else if (selectedGenre === "Classic Horror") {
-        availableTones = TONES.filter(t => t.includes("INNER-MONOLOGUE") || t.includes("OPERATIC"));
+    // The title is fixed before the comic exists: generate one unless the protagonist wrote her own.
+    let finalTitle = cleanTitle(title);
+    const needsGeneration = !finalTitle || (titleStale && titleSource === 'gemini');
+    try {
+      if (needsGeneration) {
+        setTitleBusy(true);
+        finalTitle = await generateUniqueTitle(selectedGenre, customPremise, selectedLanguage, hostName, guestName);
+        setTitle(finalTitle);
+        setTitleSource('gemini');
+        setTitleStale(false);
+      } else if (titleSource === 'manual' && isTitleTaken(finalTitle, forbiddenTitles())) {
+        setAppError('Ya tienes un cómic con ese título. Cámbialo o pulsa «Otro título».');
+        return;
+      }
+    } catch (error) {
+      if (isApiKeyError(error)) setShowApiKeyDialog(true);
+      else setAppError(`No se pudo generar el título: ${fatalGenerationMessage(error) ?? apiErrorMessage(error)}`);
+      return;
+    } finally {
+      setTitleBusy(false);
     }
-    const tone = availableTones[Math.floor(Math.random() * availableTones.length)];
-    const hostName = linkedInvitation?.hostName || localStorage.getItem(storageKeys.hostName) || 'Protagonista';
-    const guestName = linkedInvitation?.guestName || (friend ? 'Coprotagonista' : '');
+
+    setIsTransitioning(true);
+    const tone = pickTone(selectedGenre);
 
     try {
+      rememberTitle(finalTitle);
       const created = await createStory({
-        title: storyTitle(hostName, guestName, GENRE_LABELS[selectedGenre] ?? selectedGenre),
+        title: finalTitle,
         hostName,
         guestName,
         hero,
         friend,
         settings: { genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode },
         tone,
-        invitation: linkedInvitation ? { id: linkedInvitation.id, ownerToken: linkedInvitation.ownerToken } : null
+        invitation: linkedInvitation ? { id: linkedInvitation.id, ownerToken: linkedInvitation.ownerToken } : null,
+        draftId
       });
       saveStoryKeys([...loadStoryKeys(), created]);
+      setDraftId(newDraftId());
       setTimeout(() => {
         resetSetup();
         navigate({ story: created.id });
@@ -172,14 +270,23 @@ const App: React.FC = () => {
           richMode={richMode}
           onHeroUpload={handleHeroUpload}
           onFriendUpload={handleFriendUpload}
-          onGenreChange={setSelectedGenre}
-          onLanguageChange={setSelectedLanguage}
-          onPremiseChange={setCustomPremise}
+          onGenreChange={changeStorySetting(setSelectedGenre)}
+          onLanguageChange={changeStorySetting(setSelectedLanguage)}
+          onPremiseChange={changeStorySetting(setCustomPremise)}
           onRichModeChange={setRichMode}
           onLaunch={launchStory}
+          launchDisabled={titleBusy}
+          launchLabel={titleBusy ? 'BUSCANDO TÍTULO...' : undefined}
+          titleField={{
+            value: title,
+            busy: titleBusy,
+            stale: titleStale && titleSource === 'gemini',
+            onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
+            onPropose: proposeTitle
+          }}
       >
           {!isTransitioning && <>
-            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} />
+            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onTitlesLoaded={setLibraryTitles} />
             <InvitationPanel
               key={setupRevision}
               hero={hero}

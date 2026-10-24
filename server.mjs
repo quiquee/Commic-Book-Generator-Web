@@ -4,6 +4,9 @@ import { chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile 
 import { createServer } from 'node:http';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createUsageStore } from './usage.mjs';
+import { createGeminiProxy } from './geminiProxy.mjs';
+import { createAdminHandler } from './admin.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FACE_BODY_BYTES = 4 * 1024 * 1024;
@@ -128,10 +131,15 @@ function validateSettings(value) {
 }
 
 function validateStoryCreate(body) {
-  if (!exactKeys(body, [
+  const required = [
     'title', 'hostName', 'guestName', 'hero', 'friend', 'settings', 'tone', 'invitation',
-  ])) {
+  ];
+  if (!isObject(body) || !required.every((key) => Object.hasOwn(body, key))
+    || Object.keys(body).some((key) => ![...required, 'draftId'].includes(key))) {
     fail(400, 'El cuerpo de la historia no es válido.');
+  }
+  if (Object.hasOwn(body, 'draftId') && (typeof body.draftId !== 'string' || !safeInvitationId(body.draftId))) {
+    fail(400, 'El identificador del borrador no es válido.');
   }
   let invitation = null;
   if (body.invitation !== null) {
@@ -151,6 +159,7 @@ function validateStoryCreate(body) {
     tone: validateString(body.tone, 'tone', 200),
     styleGuide: '',
     invitation,
+    draftId: body.draftId,
   };
 }
 
@@ -272,6 +281,23 @@ async function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   }
 }
 
+// Validates the public base URL used in invitation links; returns it without query, hash or trailing slash.
+export function parsePublicBaseUrl(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  let url;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error('PUBLIC_BASE_URL no es una URL válida (por ejemplo https://comics.example.com).');
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('PUBLIC_BASE_URL debe usar http o https y no puede incluir credenciales.');
+  }
+  url.search = '';
+  url.hash = '';
+  return url.href.replace(/\/$/, '');
+}
+
 function sendJson(response, status, body) {
   const data = Buffer.from(JSON.stringify(body));
   response.writeHead(status, {
@@ -361,9 +387,23 @@ export function createAppServer({
   dataDir = join(process.cwd(), '.data', 'invitations'),
   storiesDir = join(process.cwd(), '.data', 'stories'),
   dev = false,
+  publicBaseUrl = null,
+  geminiApiKey,
+  geminiUpstream = 'https://generativelanguage.googleapis.com',
+  allowedModels = ['gemini-3.8-flash', 'gemini-nano-banana-2.1'],
+  usageDir = join(process.cwd(), '.data', 'usage'),
+  pricingFile = join(process.cwd(), '.data', 'pricing.json'),
+  dailyBudgetUsd = 0,
+  dailyTokenLimit = 0,
+  adminPassword,
+  trustProxy = false,
+  auditFile = join(process.cwd(), '.data', 'audit.log'),
+  upstreamTimeoutMs = 120000,
 } = {}) {
+  const configuredBaseUrl = parsePublicBaseUrl(publicBaseUrl);
   const storageDir = resolve(dataDir);
   const storyStorageDir = resolve(storiesDir);
+  const usage = createUsageStore({ usageDir, pricingFile });
   let operationQueue = Promise.resolve();
   let vitePromise;
 
@@ -474,6 +514,85 @@ export function createAppServer({
     }
   }
 
+  async function getStoryOrNull(id) {
+    if (!safeInvitationId(id)) return null;
+    return serialize(async () => {
+      try {
+        return await loadStory(id);
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 404) return null;
+        throw error;
+      }
+    });
+  }
+
+  async function listActiveStories() {
+    return serialize(async () => {
+      await prepareStoryStorage();
+      const entries = await readdir(storyStorageDir, { withFileTypes: true });
+      const records = [];
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.json') && safeInvitationId(entry.name.slice(0, -5))) {
+          records.push(await loadStory(entry.name.slice(0, -5)));
+        }
+      }
+      return records;
+    });
+  }
+
+  async function deleteStoryById(id, deletedBy) {
+    const story = await loadStory(id);
+    await usage.markDeleted(id, {
+      title: story.title,
+      hostName: story.hostName,
+      guestName: story.guestName,
+      createdAt: story.createdAt,
+      deletedAt: Date.now(),
+      completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
+      deletedBy,
+    });
+    if (story.invitationId) {
+      await prepareStorage();
+      const invitation = await loadRecord(story.invitationId);
+      invitation.storyIds = (Array.isArray(invitation.storyIds) ? invitation.storyIds : [])
+        .filter((storyId) => storyId !== id);
+      await saveRecord(invitation);
+    }
+    await rm(storyFilePath(id));
+  }
+
+  const geminiProxy = createGeminiProxy({
+    usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
+    allowedModels: typeof allowedModels === 'string' ? allowedModels.split(',').map((model) => model.trim()).filter(Boolean) : allowedModels,
+    dailyBudgetUsd, dailyTokenLimit, trustProxy, upstreamTimeoutMs,
+  });
+
+  const admin = createAdminHandler({
+    adminPassword, trustProxy, auditFile, usage, listActiveStories, getStory: getStoryOrNull,
+    deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
+    dailyBudgetUsd, dailyTokenLimit, dev,
+    serveAdminPage: async (request, response) => {
+      if (dev) {
+        request.url = '/admin.html';
+        const vite = await initializeVite();
+        vite.middlewares(request, response, () => {
+          if (!response.writableEnded) sendJson(response, 404, { error: 'No se encontró el panel de administración.' });
+        });
+      } else {
+        const file = await getStaticPath(resolve('dist'), '/admin.html');
+        if (!file) {
+          sendJson(response, 404, { error: 'No se encontró el panel de administración.' });
+          return;
+        }
+        response.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8', 'content-length': file.size,
+        });
+        if (request.method === 'HEAD') response.end();
+        else createReadStream(file.path).on('error', () => response.destroy()).pipe(response);
+      }
+    },
+  });
+
   async function participantRole(request, story) {
     const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? '');
     if (!match) fail(401, 'No tienes autorización para esta historia.');
@@ -575,6 +694,7 @@ export function createAppServer({
             throw error;
           }
         }
+        if (body.draftId) await usage.adoptDraft(body.draftId, story.id);
         return story;
       });
       sendJson(response, 201, { id: created.id, ownerToken: created.ownerToken });
@@ -723,14 +843,7 @@ export function createAppServer({
         const story = await loadStory(id);
         const role = await participantRole(request, story);
         if (role !== 'owner') fail(403, 'Solo quien creó la historia puede eliminarla.');
-        await rm(storyFilePath(id), { force: true });
-        if (story.invitationId) {
-          await prepareStorage();
-          const invitation = await loadRecord(story.invitationId);
-          invitation.storyIds = (Array.isArray(invitation.storyIds) ? invitation.storyIds : [])
-            .filter((storyId) => storyId !== id);
-          await saveRecord(invitation);
-        }
+        await deleteStoryById(id, 'owner');
         return true;
       });
       if (result) {
@@ -745,6 +858,11 @@ export function createAppServer({
 
   async function handleApi(request, response, url) {
     const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length === 2 && segments[0] === 'api' && segments[1] === 'config') {
+      if (request.method !== 'GET') fail(405, 'Método no permitido.');
+      sendJson(response, 200, { baseUrl: configuredBaseUrl, geminiProxy: Boolean(geminiApiKey) });
+      return;
+    }
     if (segments[0] === 'api' && segments[1] === 'stories') {
       await handleStories(request, response, url);
       return;
@@ -888,6 +1006,17 @@ export function createAppServer({
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost');
+      try {
+        const decodedPath = decodeURIComponent(url.pathname);
+        if (['/admin', '/admin/', '/admin.html'].includes(decodedPath)) url.pathname = decodedPath;
+      } catch {
+        fail(400, 'La ruta de la solicitud no es válida.');
+      }
+      if (url.pathname === '/api/gemini' || url.pathname.startsWith('/api/gemini/')) {
+        await geminiProxy(request, response, url);
+        return;
+      }
+      if (await admin(request, response, url)) return;
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         await handleApi(request, response, url);
         return;
@@ -925,10 +1054,23 @@ export function createAppServer({
       console.error('No se pudo cerrar Vite:', error);
     });
   });
+  const closeHttpServer = server.close.bind(server);
+  server.close = (callback) => closeHttpServer((error) => {
+    operationQueue.then(() => usage.flush()).then(
+      () => callback?.(error),
+      () => callback?.(new Error('No se pudo cerrar el almacén de consumo.')),
+    );
+  });
   return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  // Variables already present in the environment take precedence over .env.local.
+  try {
+    process.loadEnvFile(join(process.cwd(), '.env.local'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const dev = process.argv.includes('--dev');
   const port = Number.parseInt(process.env.PORT ?? '3000', 10);
   const host = process.env.HOST ?? '0.0.0.0';
@@ -936,7 +1078,22 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.error('PORT debe ser un puerto válido entre 0 y 65535.');
     process.exitCode = 1;
   } else {
-    const server = createAppServer({ dev });
+    let server;
+    try {
+      server = createAppServer({
+        dev, publicBaseUrl: process.env.PUBLIC_BASE_URL,
+        geminiApiKey: process.env.GEMINI_API_KEY,
+        geminiUpstream: process.env.GEMINI_UPSTREAM_URL,
+        allowedModels: process.env.GEMINI_ALLOWED_MODELS,
+        dailyBudgetUsd: Number(process.env.GEMINI_DAILY_BUDGET_USD ?? 0),
+        dailyTokenLimit: Number(process.env.GEMINI_DAILY_TOKEN_LIMIT ?? 0),
+        adminPassword: process.env.ADMIN_PASSWORD,
+        trustProxy: process.env.TRUST_PROXY === '1',
+      });
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
     server.listen(port, host, () => {
       const address = server.address();
       console.log(`Servidor escuchando en http://${host}:${address.port}${dev ? ' (desarrollo)' : ''}`);

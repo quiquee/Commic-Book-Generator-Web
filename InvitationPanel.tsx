@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Persona } from './types';
 import {
-    errorMessage, invitationRequest, invitationUrl, normalizeBaseUrl, storageKeys,
+    errorMessage, fetchPublicBaseUrl, invitationRequest, invitationUrl, storageKeys,
     type Invitation, type InvitationKeys, type InvitationResponse, type StorySettings
 } from './invitations';
 
@@ -10,6 +10,14 @@ interface InvitationPanelProps {
     hero: Persona | null;
     settings: StorySettings;
     onAccept: (invitation: Invitation, response: InvitationResponse, ownerToken: string) => void;
+}
+
+function isLoopbackUrl(value: string): boolean {
+    try {
+        return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(value).hostname);
+    } catch {
+        return false;
+    }
 }
 
 export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelProps) {
@@ -26,10 +34,15 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
     const mutationController = useRef<AbortController | null>(null);
 
     useEffect(() => {
-        mutationController.current = new AbortController();
+        const controller = new AbortController();
+        mutationController.current = controller;
+        // The public base URL is server configuration (PUBLIC_BASE_URL in .env.local); the page origin is the default.
+        fetchPublicBaseUrl(controller.signal)
+            .then(configured => { if (!controller.signal.aborted && configured) setBaseUrl(configured); })
+            .catch(() => { /* keep the page origin */ });
+        localStorage.removeItem('infinite-heroes.base-url');
         try {
             setHostName(localStorage.getItem(storageKeys.hostName) || '');
-            setBaseUrl(localStorage.getItem(storageKeys.baseUrl) || window.location.origin);
             const saved: unknown = JSON.parse(localStorage.getItem(storageKeys.invitations) || '[]');
             if (!Array.isArray(saved) || !saved.every(item =>
                 item && typeof item.id === 'string' && typeof item.ownerToken === 'string' && typeof item.guestToken === 'string'
@@ -74,8 +87,6 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
             if (!hero) throw new Error('Primero sube tu foto de protagonista.');
             if (!hostName.trim() || !guestName.trim()) throw new Error('Escribe tu nombre y el de la persona invitada.');
             if (settings.genre === 'Custom' && !settings.premise.trim()) throw new Error('Escribe la premisa de la historia antes de invitar.');
-            const normalized = normalizeBaseUrl(baseUrl);
-            localStorage.setItem(storageKeys.baseUrl, normalized);
             localStorage.setItem(storageKeys.hostName, hostName.trim());
             const created = await invitationRequest<InvitationKeys>('', undefined, {
                 hostName: hostName.trim(), guestName: guestName.trim(), hero, settings
@@ -84,7 +95,6 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
             const updated = [...keys, created];
             setKeys(updated);
             localStorage.setItem(storageKeys.invitations, JSON.stringify(updated));
-            setBaseUrl(normalized);
             setGuestName('');
         } catch (error) {
             if (!mutationController.current?.signal.aborted) setError(errorMessage(error));
@@ -117,18 +127,6 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
         }
     };
 
-    const saveBaseUrl = () => {
-        try {
-            const normalized = normalizeBaseUrl(baseUrl);
-            localStorage.setItem(storageKeys.baseUrl, normalized);
-            setBaseUrl(normalized);
-            setError('');
-            setNotice('URL base guardada. Usa una dirección accesible desde el dispositivo de la persona invitada.');
-        } catch (error) {
-            setError(errorMessage(error));
-        }
-    };
-
     const forgetInvitation = (id: string) => {
         try {
             const updated = keys.filter(key => key.id !== id);
@@ -153,12 +151,8 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
                     <input aria-label="Nombre de la persona invitada" maxLength={80} value={guestName} onChange={event => setGuestName(event.target.value)} className="block w-full border-2 border-black p-2 bg-white" />
                 </label>
             </div>
-            <label className="block text-sm font-bold mt-2">URL base pública
-                <input aria-label="URL base pública" type="url" value={baseUrl} onChange={event => setBaseUrl(event.target.value)} className="block w-full border-2 border-black p-2 bg-white" />
-            </label>
-            <p className="text-xs mt-1">Por ejemplo, https://comics.example.com o http://192.168.1.10:3000. «localhost» no funciona desde otro dispositivo. Los enlaces nuevos usarán esta URL; la aplicación y su API deben estar disponibles en ella.</p>
+            {isLoopbackUrl(baseUrl) && <p role="note" className="text-xs mt-1 text-amber-800">Estás accediendo desde «localhost»: los enlaces solo funcionarán en este equipo. Abre la aplicación con su dirección de red o define PUBLIC_BASE_URL en el servidor.</p>}
             <div className="flex flex-wrap gap-2 mt-2">
-                <button type="button" onClick={saveBaseUrl} disabled={!ready || busy} className="comic-btn bg-yellow-400 px-3 py-2">Guardar URL base</button>
                 <button type="button" onClick={createInvitation} disabled={!ready || busy || !hero} className="comic-btn bg-purple-600 text-white px-3 py-2 disabled:bg-gray-400">{busy ? 'Procesando...' : 'Crear invitación'}</button>
             </div>
             {error && <p role="alert" className="text-red-700 font-bold mt-2">{error}</p>}
@@ -167,7 +161,7 @@ export function InvitationPanel({ hero, settings, onAccept }: InvitationPanelPro
             {keys.map(key => {
                 const invitation = invitations.find(item => item.id === key.id);
                 let url: string;
-                try { url = invitationUrl(baseUrl, key); } catch { return <p key={key.id}>Guarda una URL base válida para mostrar el enlace.</p>; }
+                try { url = invitationUrl(baseUrl, key); } catch { return <p key={key.id} role="alert">No se pudo construir el enlace de la invitación: la URL base configurada no es válida.</p>; }
                 return (
                     <div key={key.id} className="border-2 border-black bg-white p-3 mt-3">
                         <h3 className="font-comic text-xl">Invitación para {invitation?.guestName || 'coprotagonista'}</h3>

@@ -1,0 +1,18 @@
+{
+  "version": "AAAA-MM-DD",
+  "currency": "USD",
+  "models": {
+    "gemini-3.8-flash": {
+      "inputText": "<USD por 1M tokens>",
+      "inputImage": "<USD por 1M tokens>",
+      "outputText": "<USD por 1M tokens>",
+      "outputImage": "<USD por 1M tokens>"
+    },
+    "gemini-nano-banana-2.1": {
+      "inputText": "<USD por 1M tokens>",
+      "inputImage": "<USD por 1M tokens>",
+      "outputText": "<USD por 1M tokens>",
+      "outputImage": "<USD por 1M tokens>"
+    }
+  }
+}

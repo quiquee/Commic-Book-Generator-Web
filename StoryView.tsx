@@ -8,7 +8,8 @@ import {
     type StoryAuth, type StoryDocument
 } from './stories';
 import { faceId, faceType, findFace, isStoryFinished, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, upsertFace } from './storyLogic';
-import { createAI, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError, type StoryContext } from './generation';
+import { apiErrorMessage, createAI, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError, type StoryContext } from './generation';
+import { titleSlug } from './titles';
 
 interface StoryViewProps {
     storyId: string;
@@ -70,6 +71,13 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
     }, [storyId, auth]);
 
     useEffect(() => {
+        if (!story?.title) return;
+        const previous = document.title;
+        document.title = `${story.title} · Héroes Infinitos`;
+        return () => { document.title = previous; };
+    }, [story?.title]);
+
+    useEffect(() => {
         if (!story) return;
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout>;
@@ -122,7 +130,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         const signal = controller.signal;
         const context = (): StoryContext => {
             const current = storyRef.current!;
-            return { hero: current.hero, friend: current.friend, hostName: current.hostName, guestName: current.guestName, settings: current.settings, tone: current.tone, styleGuide: current.styleGuide };
+            return { hero: current.hero, friend: current.friend, hostName: current.hostName, guestName: current.guestName, settings: current.settings, tone: current.tone, styleGuide: current.styleGuide, title: current.title };
         };
         const ensureNotCancelled = () => { if (signal.aborted) throw new DOMException('Cancelado', 'AbortError'); };
 
@@ -163,7 +171,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
                 ensureNotCancelled();
             }
 
-            const rawImage = await generateImage(ai, context(), beat, type, previousImage(storyRef.current!.faces, pageIndex));
+            const rawImage = await generateImage(ai, context(), beat, type, previousImage(storyRef.current!.faces, pageIndex), pageIndex);
             ensureNotCancelled();
             const imageUrl = await compressImage(rawImage);
             face = { ...face, imageUrl, isLoading: false };
@@ -172,7 +180,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         };
 
         (async () => {
-            const ai = createAI();
+            const ai = createAI({ kind: 'story', storyId, token: auth.token });
             let failures = 0;
             while (!signal.aborted) {
                 try {
@@ -197,16 +205,22 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
                 } catch (failure) {
                     if (isAbort(failure) || signal.aborted) return;
                     failures++;
+                    const fatal = fatalGenerationMessage(failure);
+                    if (fatal) {
+                        setStatus({ kind: 'stopped', reason: fatal });
+                        setError('');
+                        return;
+                    }
                     if (isApiKeyError(failure)) {
                         setStatus({ kind: 'stopped', reason: 'Se necesita una clave de API válida.' });
                         onApiKeyError();
                         return;
                     }
                     if (failures >= 5) {
-                        setStatus({ kind: 'stopped', reason: errorMessage(failure) });
+                        setStatus({ kind: 'stopped', reason: apiErrorMessage(failure) });
                         return;
                     }
-                    setError(`Error al generar: ${errorMessage(failure)}. Reintentando (${failures}/5)...`);
+                    setError(`Error al generar: ${apiErrorMessage(failure)}. Reintentando (${failures}/5)...`);
                     try { await sleep(3000 * failures, signal); } catch { return; }
                 }
             }
@@ -238,11 +252,13 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         const pages = story.faces.filter(face => face.imageUrl && !face.isLoading).sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0));
         if (!pages.length) return;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [480, 720] });
+        const cast = story.guestName ? `${story.hostName} y ${story.guestName}` : story.hostName;
+        doc.setProperties({ title: story.title, subject: `Cómic de ${cast}`, author: story.hostName, creator: 'Héroes Infinitos' });
         pages.forEach((face, index) => {
             if (index > 0) doc.addPage([480, 720], 'portrait');
             doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
         });
-        doc.save(`${story.title.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`);
+        doc.save(`${titleSlug(story.title)}.pdf`);
     };
 
     const sharePage = async (face: ComicFace) => {
@@ -250,7 +266,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         const label = face.type === 'cover' ? 'portada' : face.type === 'back_cover' ? 'contraportada' : `pagina-${face.pageIndex}`;
         try {
             const blob = await (await fetch(face.imageUrl)).blob();
-            const file = new File([blob], `${label}.jpg`, { type: 'image/jpeg' });
+            const file = new File([blob], `${titleSlug(story.title)}-${label}.jpg`, { type: 'image/jpeg' });
             const share = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
             if (share.share && share.canShare?.({ files: [file] })) {
                 await share.share({ files: [file], title: story.title, text: `${story.title} – ${label}` });

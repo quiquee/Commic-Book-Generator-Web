@@ -13,10 +13,60 @@ export interface StoryContext {
     settings: StorySettings;
     tone: string;
     styleGuide: string;
+    title: string;
 }
 
-export function createAI(): GoogleGenAI {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+export interface TitleRequest {
+    settings: StorySettings;
+    tone: string;
+    hostName: string;
+    guestName: string;
+    forbidden: string[];
+}
+
+// Asks for several fresh candidates at once; the caller filters out repeats with pickUniqueTitle.
+export async function generateTitleCandidates(ai: GoogleGenAI, request: TitleRequest): Promise<string[]> {
+    const langName = languageName(request.settings.language);
+    const seed = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const forbidden = request.forbidden.slice(-60);
+    const prompt = `
+You are naming a new comic book issue. ${coreDriver(request.settings, request.tone)}
+CAST: protagonist "${request.hostName || 'the hero'}"${request.guestName ? ` and co-star "${request.guestName}"` : ''}.
+Invent 5 ORIGINAL titles IN ${langName.toUpperCase()}: 2 to 6 words each, evocative, in the spirit of classic comic mastheads, no quotes, no numbering, no subtitle after a colon, max 50 characters.
+Every title must be clearly different from each other AND from this list of already used titles (also avoid trivial variations of them):
+${forbidden.length ? forbidden.map(title => `- ${title}`).join('\n') : '- (none yet)'}
+Do not use "Infinite Heroes", "Héroes Infinitos" or translations of it. Randomness seed: ${seed}.
+
+OUTPUT STRICT JSON ONLY: { "titles": ["...", "...", "...", "...", "..."] }`;
+    const response = await ai.models.generateContent({
+        model: MODEL_TEXT_NAME,
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 1.3, ...usage('title') }
+    });
+    const parsed = parseJson(response.text);
+    const titles = Array.isArray(parsed.titles) ? parsed.titles : Array.isArray(parsed) ? parsed : [];
+    if (!titles.length) throw new Error('Gemini no propuso ningún título.');
+    return titles;
+}
+
+// Every Gemini call goes through the server proxy, which holds the API key and meters usage per story or draft.
+export type UsageScope =
+    | { kind: 'story'; storyId: string; token: string }
+    | { kind: 'draft'; draftId: string };
+
+export function createAI(scope: UsageScope): GoogleGenAI {
+    const headers: Record<string, string> = scope.kind === 'story'
+        ? { 'X-Story-Id': scope.storyId, 'X-Story-Token': scope.token }
+        : { 'X-Draft-Id': scope.draftId };
+    return new GoogleGenAI({
+        apiKey: 'proxy',
+        httpOptions: { baseUrl: `${window.location.origin}/api/gemini`, apiVersion: 'v1beta', headers }
+    });
+}
+
+// Labels each call so the usage report can break consumption down by operation and page.
+function usage(op: string) {
+    return { httpOptions: { headers: { 'X-Usage-Op': op } } };
 }
 
 export function isApiKeyError(error: unknown): boolean {
@@ -24,6 +74,26 @@ export function isApiKeyError(error: unknown): boolean {
     return message.includes('Requested entity was not found')
         || message.includes('API_KEY_INVALID')
         || message.toLowerCase().includes('permission denied');
+}
+
+// The SDK throws ApiError whose message is the raw JSON body; extract the human-readable part.
+export function apiErrorMessage(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.error?.message === 'string') return parsed.error.message;
+    } catch {
+        // Not JSON: keep the original text.
+    }
+    return raw;
+}
+
+// Errors that retrying cannot fix: spending limits and a server without an API key.
+export function fatalGenerationMessage(error: unknown): string | null {
+    const message = apiErrorMessage(error);
+    if (message.includes('LIMITE_DE_CONSUMO')) return message.replace(/^LIMITE_DE_CONSUMO:\s*/, '');
+    if (message.includes('GEMINI_API_KEY no configurada')) return message;
+    return null;
 }
 
 function languageName(code: string): string {
@@ -66,7 +136,7 @@ OUTPUT STRICT JSON ONLY:
     const response = await ai.models.generateContent({
         model: MODEL_TEXT_NAME,
         contents,
-        config: { responseMimeType: 'application/json' }
+        config: { responseMimeType: 'application/json', ...usage('style') }
     });
     const parsed = parseJson(response.text);
     const section = (label: string, value: unknown) => typeof value === 'string' && value.trim() ? `${label}: ${value.trim()}` : '';
@@ -145,6 +215,7 @@ export async function generateBeat(
 
     const prompt = `
 You are writing a comic book script. PAGE ${pageNum} of ${MAX_STORY_PAGES}.
+ISSUE TITLE: "${context.title}" (the story should honor this title thematically).
 TARGET LANGUAGE FOR TEXT: ${langName} (CRITICAL: CAPTIONS, DIALOGUE, CHOICES MUST BE IN THIS LANGUAGE).
 ${coreDriver(settings, tone)}
 
@@ -180,7 +251,7 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     const response = await ai.models.generateContent({
         model: MODEL_TEXT_NAME,
         contents: prompt,
-        config: { responseMimeType: 'application/json' }
+        config: { responseMimeType: 'application/json', ...usage(`beat:${pageNum}`) }
     });
     const parsed = parseJson(response.text);
     if (typeof parsed.scene !== 'string' || !parsed.scene.trim()) throw new Error('El guion de la página llegó vacío.');
@@ -200,7 +271,7 @@ export async function generatePersona(ai: GoogleGenAI, context: StoryContext, de
     const response = await ai.models.generateContent({
         model: MODEL_IMAGE_GEN_NAME,
         contents: { text: `STYLE: Masterpiece ${style} character sheet, detailed ink, neutral background. FULL BODY. Character: ${desc}. ${context.styleGuide ? `Follow this CHARACTER BIBLE for the CO-STAR: ${context.styleGuide}` : ''}` },
-        config: { imageConfig: { aspectRatio: '1:1' } }
+        config: { imageConfig: { aspectRatio: '1:1' }, ...usage('persona') }
     });
     const part = response.candidates?.[0]?.content?.parts?.find(candidate => candidate.inlineData);
     if (!part?.inlineData?.data) throw new Error('No se pudo crear el personaje secundario.');
@@ -212,7 +283,8 @@ export async function generateImage(
     context: StoryContext,
     beat: Beat,
     type: ComicFace['type'],
-    previousImage: string | null
+    previousImage: string | null,
+    pageIndex: number
 ): Promise<string> {
     const contents: any[] = [{ text: 'REFERENCE 1 [HERO] (real face to reproduce):' }, inlineJpeg(context.hero.base64)];
     if (context.friend) contents.push({ text: 'REFERENCE 2 [CO-STAR] (real face to reproduce):' }, inlineJpeg(context.friend.base64));
@@ -225,9 +297,9 @@ export async function generateImage(
     if (previousImage) promptText += 'CONTINUITY: REFERENCE 3 is the previous page of this same issue. Keep every character looking exactly like there (same outfit, hair, accessories, proportions) and keep the same rendering technique. ';
 
     if (type === 'cover') {
-        promptText += `TYPE: Comic Book Cover. TITLE: "INFINITE HEROES" (OR LOCALIZED TRANSLATION IN ${langName.toUpperCase()}). Main visual: Dynamic action shot of [HERO] (Use REFERENCE 1)${context.friend ? ' together with [CO-STAR] (Use REFERENCE 2)' : ''}, wearing the costumes from the CHARACTER BIBLE.`;
+        promptText += `TYPE: Comic Book Cover. TITLE LOGO (large, bold comic lettering, spelled EXACTLY like this): "${context.title}". Small imprint text in a corner: "INFINITE HEROES". Main visual: Dynamic action shot of [HERO] (Use REFERENCE 1)${context.friend ? ' together with [CO-STAR] (Use REFERENCE 2)' : ''}, wearing the costumes from the CHARACTER BIBLE.`;
     } else if (type === 'back_cover') {
-        promptText += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser. Text: a localized translation of "NEXT ISSUE SOON" in ${langName}.`;
+        promptText += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser for the next issue of "${context.title}". Text: a localized translation of "NEXT ISSUE SOON" in ${langName}, plus the title "${context.title}" in smaller lettering.`;
     } else {
         promptText += `TYPE: Vertical comic panel. SCENE: ${beat.scene}. `;
         promptText += 'INSTRUCTIONS: Maintain strict character likeness. If scene mentions \'HERO\', you MUST use REFERENCE 1. If scene mentions \'CO-STAR\' or \'SIDEKICK\', you MUST use REFERENCE 2.';
@@ -239,7 +311,7 @@ export async function generateImage(
     const response = await ai.models.generateContent({
         model: MODEL_IMAGE_GEN_NAME,
         contents,
-        config: { imageConfig: { aspectRatio: '2:3' } }
+        config: { imageConfig: { aspectRatio: '2:3' }, ...usage(`image:${pageIndex}`) }
     });
     const part = response.candidates?.[0]?.content?.parts?.find(candidate => candidate.inlineData);
     if (!part?.inlineData?.data) throw new Error('El modelo no devolvió ninguna imagen.');
