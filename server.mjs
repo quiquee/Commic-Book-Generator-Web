@@ -11,6 +11,9 @@ import { GoogleGenAI } from '@google/genai';
 import { createStoryWorker } from './storyWorker.mjs';
 import { createPushService, validateSubscription } from './push.mjs';
 import { nextPageToGenerate } from './storyLogic.ts';
+import { translateServerText } from './locales/serverText.ts';
+
+const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FACE_BODY_BYTES = 4 * 1024 * 1024;
@@ -610,7 +613,7 @@ export function createAppServer({
     const subscriptions = Array.isArray(story.subscriptions) ? story.subscriptions : [];
     if (!subscriptions.length) return;
     const results = await Promise.all(subscriptions.map((entry) => push.send(entry.subscription, {
-      title: story.title, body: pushMessages[event], url: entry.url, tag: `${story.id}:${event}`,
+      title: story.title, body: translateServerText(pushMessages[event], entry.lang ?? 'es'), url: entry.url, tag: `${story.id}:${event}`,
     })));
     const gone = new Set(subscriptions.filter((_, index) => results[index] === 'gone').map((entry) => entry.subscription.endpoint));
     if (gone.size) {
@@ -978,13 +981,15 @@ export function createAppServer({
       if (!subscription || typeof body.url !== 'string' || !/^\/(?:index\.html)?#[A-Za-z0-9=&_.-]{1,600}$/.test(body.url)) {
         fail(400, 'La suscripción no es válida.');
       }
+      // Notifications are written in the subscriber's interface language.
+      const lang = PUSH_LANGUAGES.has(body.lang) ? body.lang : 'es';
       await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
         await participantRole(request, story);
         const others = (Array.isArray(story.subscriptions) ? story.subscriptions : [])
           .filter((entry) => entry.subscription.endpoint !== subscription.endpoint);
-        story.subscriptions = [...others, { subscription, url: body.url }].slice(-10);
+        story.subscriptions = [...others, { subscription, url: body.url, lang }].slice(-10);
         await saveStory(story);
       });
       sendJson(response, 201, { subscribed: true });

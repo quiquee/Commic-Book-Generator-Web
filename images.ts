@@ -1,3 +1,5 @@
+import { t } from './i18n.ts';
+
 // Decodes without HTMLImageElement.decode(), which can stall indefinitely while the tab is hidden.
 export async function loadBitmap(source: Blob): Promise<ImageBitmap> {
     if (typeof createImageBitmap === 'function') return createImageBitmap(source);
@@ -6,7 +8,7 @@ export async function loadBitmap(source: Blob): Promise<ImageBitmap> {
         const image = new Image();
         await new Promise<void>((resolve, reject) => {
             image.onload = () => resolve();
-            image.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+            image.onerror = () => reject(new Error(t('error.readImage')));
             image.src = objectUrl;
         });
         return image as unknown as ImageBitmap;
@@ -23,7 +25,7 @@ export async function toJpegDataUrl(source: Blob, maxDimension: number, quality:
         canvas.width = Math.max(1, Math.round(bitmap.width * scale));
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         const context = canvas.getContext('2d');
-        if (!context) throw new Error('El navegador no permite procesar la imagen.');
+        if (!context) throw new Error(t('error.processImage'));
         context.fillStyle = '#fff';
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);

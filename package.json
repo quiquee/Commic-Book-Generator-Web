@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.mjs",
-    "test": "node --experimental-strip-types --test server.test.mjs storyWorker.test.mjs usage.test.mjs admin.test.mjs invitations.test.ts storyLogic.test.ts titles.test.ts",
+    "test": "node --experimental-strip-types --test server.test.mjs storyWorker.test.mjs usage.test.mjs admin.test.mjs invitations.test.ts storyLogic.test.ts titles.test.ts i18n.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

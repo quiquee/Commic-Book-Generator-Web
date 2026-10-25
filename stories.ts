@@ -1,5 +1,6 @@
 import type { ComicFace, Persona } from './types.ts';
 import { invitationRequest, type StorySettings } from './invitations.ts';
+import { intlLocale, t } from './i18n.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
@@ -85,7 +86,7 @@ export function loadStoryKeys(): StoryKey[] {
     const saved: unknown = JSON.parse(localStorage.getItem(storyStorageKey) || '[]');
     if (!Array.isArray(saved) || !saved.every(item =>
         item && typeof item === 'object' && typeof item.id === 'string' && typeof item.ownerToken === 'string'
-    )) throw new Error('La lista de cómics guardada no es válida.');
+    )) throw new Error(t('error.savedStoriesInvalid'));
     return saved;
 }
 
@@ -139,11 +140,11 @@ export async function storyRequest<T>(
     });
     if (response.status === 204) return undefined as T;
     if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error('El servidor de historias no está disponible. Arranca la aplicación con npm run dev o npm start.');
+        throw new Error(t('error.storyServer'));
     }
     const result = await response.json();
     if (!response.ok) {
-        const error = new Error(typeof result.error === 'string' ? result.error : 'No se pudo completar la petición.') as Error & { status?: number; resolvedChoice?: string };
+        const error = new Error(typeof result.error === 'string' ? result.error : t('error.requestFailed')) as Error & { status?: number; resolvedChoice?: string };
         error.status = response.status;
         if (typeof result.resolvedChoice === 'string') error.resolvedChoice = result.resolvedChoice;
         throw error;
@@ -194,8 +195,9 @@ export function restartGeneration(id: string, auth: StoryAuth): Promise<{ starte
 }
 
 // `url` is where the notification takes the reader back to (this same comic, with the same credentials).
-export function subscribeToStory(id: string, auth: StoryAuth, subscription: PushSubscriptionJSON, url: string): Promise<{ subscribed: boolean }> {
-    return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url } });
+// `lang` is the interface language the notifications should be written in.
+export function subscribeToStory(id: string, auth: StoryAuth, subscription: PushSubscriptionJSON, url: string, lang: string): Promise<{ subscribed: boolean }> {
+    return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url, lang } });
 }
 
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {
@@ -208,5 +210,5 @@ export function listGuestStories(invitationId: string, token: string, signal?: A
 }
 
 export function formatDate(timestamp: number): string {
-    return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
+    return new Intl.DateTimeFormat(intlLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
 }

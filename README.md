@@ -21,11 +21,28 @@ View your app in AI Studio: https://ai.studio/apps/03a56218-edf3-4378-9f7c-61802
 
 The Node.js server runs both Vite and the invitation API at
 the port and interface from `server.port` / `server.host` in `vite.config.ts`
-(currently `http://localhost:7000`). `PORT` or `HOST` in the environment or
+(currently `http://localhost:7002`). `PORT` or `HOST` in the environment or
 `.env.local` override them; if Vite is not installed (e.g. `npm ci --omit=dev`),
 the defaults are port 3000 on `0.0.0.0`.
 `npm run preview` only previews the static frontend and does not provide the
 invitation API.
+
+## Idiomas
+
+La interfaz sigue el idioma del navegador: español, inglés, francés, alemán y
+gallego (`navigator.languages`; cualquier otro idioma usa inglés). También se
+elige por defecto el idioma del cómic, el título por defecto y las ideas de
+historia. `?lang=fr` en la URL fuerza un idioma, útil para probar.
+
+- Los textos están en `locales/*.ts`, con el español (`locales/es.ts`) como
+  fuente; TypeScript obliga a que cada idioma tenga las mismas claves. Se usan
+  con `t('clave', { variable })` de `i18n.ts`.
+- El servidor sigue respondiendo en español. `locales/serverText.ts` traduce sus
+  mensajes en el navegador al mostrarlos, y en el servidor para los avisos push,
+  que se envían en el idioma de quien se suscribió. Los mensajes de consola del
+  servidor siguen en español.
+- Los nombres de los idiomas del cómic se muestran en su propio idioma
+  (Español, English, Français, Galego, Deutsch).
 
 ## Invitaciones y coprotagonistas
 
@@ -46,7 +63,7 @@ invitation API.
    fragmento, y una variable de entorno tiene prioridad sobre `.env.local`. Un
    valor inválido impide arrancar. Si abres la aplicación desde `localhost` sin
    definirla, se avisa de que los enlaces solo funcionarán en ese equipo. Para
-   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:7000`.
+   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:7002`.
    En producción configura el proxy para enviar tanto las páginas como `/api` al
    servidor Node.js. El valor solo cambia los enlaces y QR, no la dirección de
    escucha (`HOST`/`PORT`); los enlaces ya creados se actualizan al reiniciar.

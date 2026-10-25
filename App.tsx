@@ -5,7 +5,8 @@
 */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { TONES, LANGUAGES, Persona } from './types';
+import { TONES, Persona } from './types';
+import { defaultComicLanguage, localizeText, t } from './i18n';
 import { Setup } from './Setup';
 import { Book } from './Book';
 import { useApiKey } from './useApiKey';
@@ -21,7 +22,7 @@ import { apiErrorMessage, createAI, fatalGenerationMessage, generateTitleCandida
 import { cleanTitle, isTitleTaken, loadTitleHistory, pickUniqueTitle, rememberTitle } from './titles';
 
 // Pre-filled title; titles are unique, so once it has been used Gemini proposes one instead.
-const DEFAULT_TITLE = 'Héroes';
+const DEFAULT_TITLE = t('title.default');
 
 function pickTone(genre: string): string {
   let availableTones = TONES;
@@ -40,7 +41,7 @@ const App: React.FC = () => {
   const [friend, setFriend] = useState<Persona | null>(null);
   // "Mi historia" (own premise) is the default; the ready-made genres are the alternative.
   const [selectedGenre, setSelectedGenre] = useState('Custom');
-  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].code);
+  const [selectedLanguage, setSelectedLanguage] = useState(defaultComicLanguage);
   const [customPremise, setCustomPremise] = useState("");
   const [richMode, setRichMode] = useState(true);
   const [castMode, setCastMode] = useState<CastMode>('solo');
@@ -66,14 +67,14 @@ const App: React.FC = () => {
         const persona: unknown = JSON.parse(saved);
         if (!persona || typeof persona !== 'object' || !('base64' in persona) || !('desc' in persona) ||
             typeof persona.base64 !== 'string' || typeof persona.desc !== 'string') {
-          throw new Error('La foto guardada no es válida.');
+          throw new Error(t('error.savedPhotoInvalid'));
         }
         setHero({ base64: persona.base64, desc: persona.desc });
       } else {
         setHero(null);
       }
     } catch (error) {
-      setAppError(`No se pudo recuperar tu foto: ${errorMessage(error)}`);
+      setAppError(t('error.loadPhoto', { reason: errorMessage(error) }));
     }
   }, []);
 
@@ -81,7 +82,7 @@ const App: React.FC = () => {
     loadSavedHero();
     fetchServerConfig()
       .then(config => {
-        if (config.geminiProxy === false) setAppError('La generación de cómics no está disponible en este momento. Inténtalo más tarde.');
+        if (config.geminiProxy === false) setAppError(t('error.generationUnavailable'));
       })
       .catch(() => { /* the API is reported by the actions that need it */ });
     const onHashChange = () => setRoute(getRoute());
@@ -115,7 +116,7 @@ const App: React.FC = () => {
     resetSetup();
     loadSavedHero();
     setSelectedGenre('Custom');
-    setSelectedLanguage(LANGUAGES[0].code);
+    setSelectedLanguage(defaultComicLanguage);
     setCustomPremise('');
     setRichMode(true);
   };
@@ -161,7 +162,7 @@ const App: React.FC = () => {
       if (fresh) return fresh;
     }
     const numbered = pickUniqueTitle(lastCandidates, forbidden);
-    if (!numbered) throw new Error('No se pudo proponer un título nuevo. Inténtalo de nuevo o escribe uno.');
+    if (!numbered) throw new Error(t('error.noNewTitle'));
     return numbered;
   };
 
@@ -171,20 +172,20 @@ const App: React.FC = () => {
     : invitation?.response ? { ...invitation.response.persona, desc: invitation.response.name } : null;
 
   const currentNames = () => ({
-    hostName: invitation?.invitation.hostName || localStorage.getItem(storageKeys.hostName) || 'Protagonista',
-    guestName: invitation?.invitation.guestName || (coStar ? 'Coprotagonista' : '')
+    hostName: invitation?.invitation.hostName || localStorage.getItem(storageKeys.hostName) || t('cast.protagonist'),
+    guestName: invitation?.invitation.guestName || (coStar ? t('cast.costar') : '')
   });
 
   // What still blocks the launch button, as its label.
   const launchBlocker = castMode === 'invite'
-    ? !invitation ? 'PRIMERO CREA LA INVITACIÓN'
-      : !invitation.response ? `ESPERANDO A ${invitation.invitation.guestName.toUpperCase()}...` : null
-    : castMode === 'photo' && !friend ? 'SUBE LA FOTO DE TU COPROTAGONISTA' : null;
+    ? !invitation ? t('launch.createInvitationFirst')
+      : !invitation.response ? t('launch.waitingFor', { name: invitation.invitation.guestName.toUpperCase() }) : null
+    : castMode === 'photo' && !friend ? t('launch.uploadCostar') : null;
 
   const proposeTitle = async () => {
     if (titleBusy) return;
     if (selectedGenre === 'Custom' && !customPremise.trim()) {
-      setAppError('Escribe de qué va tu historia (o elige una idea) antes de proponer un título.');
+      setAppError(t('error.premiseBeforeTitle'));
       return;
     }
     if (!(await validateApiKey())) return;
@@ -198,7 +199,7 @@ const App: React.FC = () => {
       setTitleStale(false);
     } catch (error) {
       if (isApiKeyError(error)) setShowApiKeyDialog(true);
-      else setAppError(`No se pudo proponer un título: ${fatalGenerationMessage(error) ?? apiErrorMessage(error)}`);
+      else setAppError(t('error.proposeTitle', { reason: localizeText(fatalGenerationMessage(error) ?? apiErrorMessage(error)) }));
     } finally {
       setTitleBusy(false);
     }
@@ -223,7 +224,7 @@ const App: React.FC = () => {
     const hasKey = await validateApiKey();
     if (!hasKey || !hero) return;
     if (selectedGenre === 'Custom' && !customPremise.trim()) {
-        setAppError('Escribe de qué va tu historia, elige una de las ideas o cambia a «Un género».');
+        setAppError(t('error.premiseMissing'));
         return;
     }
     setAppError('');
@@ -240,12 +241,12 @@ const App: React.FC = () => {
         setTitleSource('gemini');
         setTitleStale(false);
       } else if (titleSource === 'manual' && isTitleTaken(finalTitle, forbiddenTitles())) {
-        setAppError('Ya tienes un cómic con ese título. Cámbialo o pulsa «Otro título».');
+        setAppError(t('error.titleTaken'));
         return;
       }
     } catch (error) {
       if (isApiKeyError(error)) setShowApiKeyDialog(true);
-      else setAppError(`No se pudo generar el título: ${fatalGenerationMessage(error) ?? apiErrorMessage(error)}`);
+      else setAppError(t('error.generateTitle', { reason: localizeText(fatalGenerationMessage(error) ?? apiErrorMessage(error)) }));
       return;
     } finally {
       setTitleBusy(false);
@@ -278,7 +279,7 @@ const App: React.FC = () => {
       }, 1100);
     } catch (error) {
       setIsTransitioning(false);
-      setAppError(`No se pudo crear el cómic: ${errorMessage(error)}`);
+      setAppError(t('error.createComic', { reason: errorMessage(error) }));
     }
   };
 
@@ -288,7 +289,7 @@ const App: React.FC = () => {
            localStorage.setItem(storageKeys.hero, JSON.stringify(persona));
            setHero(persona);
            setAppError('');
-       } catch (error) { setAppError(`No se pudo guardar la foto del héroe: ${errorMessage(error)}`); }
+       } catch (error) { setAppError(t('error.saveHeroPhoto', { reason: errorMessage(error) })); }
   };
   const handleFriendUpload = async (file: File) => {
        try { setFriend(await photoFromFile(file)); setAppError(''); }
@@ -310,8 +311,8 @@ const App: React.FC = () => {
   } else if (route.story) {
     content = (
       <div className="bg-white border-4 border-black p-8 max-w-lg text-center">
-        <h1 className="font-comic text-3xl mb-2">Sin acceso a este cómic</h1>
-        <p>Este navegador no tiene la clave del cómic. Ábrelo desde el dispositivo de la protagonista o desde el enlace de invitación.</p>
+        <h1 className="font-comic text-3xl mb-2">{t('noAccess.title')}</h1>
+        <p>{t('noAccess.body')}</p>
       </div>
     );
   } else if (route.join && route.token) {
@@ -338,11 +339,11 @@ const App: React.FC = () => {
           }
           banner={redoSource && (
             <div role="status" className="text-left border-2 border-black bg-yellow-100 p-2 mb-3 flex flex-wrap items-center gap-2">
-              <p className="flex-1 text-sm">🔁 Has cargado los personajes y la historia de <strong>«{redoSource.title}»</strong>. Cambia lo que quieras y pulsa empezar: se creará un cómic nuevo y el original se conserva.</p>
-              <button type="button" onClick={startFresh} className="underline text-sm">Empezar de cero</button>
+              <p className="flex-1 text-sm">🔁 {t('redo.banner', { title: redoSource.title })}</p>
+              <button type="button" onClick={startFresh} className="underline text-sm">{t('redo.startFresh')}</button>
             </div>
           )}
-          storyLockedReason={invitation ? `Historia compartida con ${invitation.invitation.guestName}: no se puede cambiar.` : undefined}
+          storyLockedReason={invitation ? t('story.locked', { name: invitation.invitation.guestName }) : undefined}
           selectedGenre={selectedGenre}
           selectedLanguage={selectedLanguage}
           customPremise={customPremise}
@@ -355,14 +356,14 @@ const App: React.FC = () => {
           onRichModeChange={setRichMode}
           onLaunch={launchStory}
           launchDisabled={titleBusy || !!launchBlocker}
-          launchLabel={titleBusy ? 'BUSCANDO TÍTULO...' : launchBlocker ?? (coStar && invitation
-            ? `¡EMPEZAR CON ${invitation.invitation.guestName.toUpperCase()}!` : undefined)}
+          launchLabel={titleBusy ? t('launch.searchingTitle') : launchBlocker ?? (coStar && invitation
+            ? t('launch.startWith', { name: invitation.invitation.guestName.toUpperCase() }) : undefined)}
           titleField={{
             value: title,
             busy: titleBusy,
             stale: titleStale && titleSource === 'gemini',
-            note: defaultTitleTaken ? `Ya usaste «${DEFAULT_TITLE}»: se propondrá un título nuevo al empezar, salvo que escribas uno.`
-              : titleSource === 'default' ? 'Título por defecto: puedes cambiarlo o pulsar «Otro título» para recibir una propuesta.' : undefined,
+            note: defaultTitleTaken ? t('title.defaultTaken', { title: DEFAULT_TITLE })
+              : titleSource === 'default' ? t('title.defaultHint') : undefined,
             onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
             onPropose: proposeTitle
           }}
@@ -378,9 +379,9 @@ const App: React.FC = () => {
 
   return (
     <div className="comic-scene">
-      <button type="button" onClick={returnToMainMenu} className="fixed top-2 left-2 z-[500] comic-btn bg-yellow-400 text-black px-3 py-2 text-lg">Menú principal</button>
+      <button type="button" onClick={returnToMainMenu} className="fixed top-2 left-2 z-[500] comic-btn bg-yellow-400 text-black px-3 py-2 text-lg">{t('nav.mainMenu')}</button>
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
-          {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>Cerrar aviso</button>
+          {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>
       </div>}
       {showApiKeyDialog && <ApiKeyDialog onContinue={handleApiKeyDialogContinue} />}
       {content}

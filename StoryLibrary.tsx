@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { errorMessage } from './invitations';
+import { t } from './i18n';
 import { fetchStory, fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory, type StoryDocument, type StoryKey, type StoryMeta } from './stories';
 
 interface StoryLibraryProps {
@@ -39,7 +40,7 @@ export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryPro
                 else problems.push(errorMessage(result.reason));
             });
             setStories(next);
-            setError(problems[0] ? `No se pudieron cargar algunos cómics: ${problems[0]}` : '');
+            setError(problems[0] ? t('library.loadSomeFailed', { reason: problems[0] }) : '');
             onTitlesLoaded?.(Object.values(next).flatMap(meta => 'missing' in meta ? [] : [meta.title]));
         });
         return () => controller.abort();
@@ -58,7 +59,7 @@ export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryPro
             forget(key.id);
         } catch (failure) {
             if ((failure as { status?: number }).status === 404) { forget(key.id); return; }
-            setError(`No se pudo borrar el cómic: ${errorMessage(failure)}`);
+            setError(t('library.deleteFailed', { reason: errorMessage(failure) }));
         }
     };
 
@@ -69,7 +70,7 @@ export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryPro
         try {
             onRedo(await fetchStory(key.id, { kind: 'owner', token: key.ownerToken }));
         } catch (failure) {
-            setError(`No se pudo cargar el cómic para rehacerlo: ${errorMessage(failure)}`);
+            setError(t('library.redoFailed', { reason: errorMessage(failure) }));
         } finally {
             setRedoingId(null);
         }
@@ -79,8 +80,8 @@ export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryPro
 
     return (
         <section className="border-4 border-black bg-green-50 p-3 mb-4 text-left">
-            <h2 className="font-comic text-2xl">Mis cómics</h2>
-            <p className="text-sm mb-2">Los cómics se guardan en el servidor y puedes continuarlos desde aquí. Solo tú puedes borrarlos.</p>
+            <h2 className="font-comic text-2xl">{t('library.title')}</h2>
+            <p className="text-sm mb-2">{t('library.hint')}</p>
             {error && <p role="alert" className="text-red-700 font-bold mb-2">{error}</p>}
             <ul className="flex flex-col gap-2">
                 {keys.map(key => {
@@ -90,17 +91,17 @@ export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryPro
                     return (
                         <li key={key.id} className="border-2 border-black bg-white p-2 flex flex-wrap items-center gap-2">
                             <div className="flex-1 min-w-[12rem]">
-                                <p className="font-comic text-lg">{loaded?.title ?? (missing ? 'Cómic no disponible' : 'Cargando...')}</p>
-                                {loaded && <p className="text-xs text-gray-700">{loaded.completedPages}/{loaded.totalPages} páginas · {formatDate(loaded.updatedAt)}{loaded.guestName ? ` · con ${loaded.guestName}` : ''}</p>}
-                                {missing && <p className="text-xs text-gray-700">Ya no existe en el servidor.</p>}
+                                <p className="font-comic text-lg">{loaded?.title ?? (missing ? t('library.unavailable') : t('common.loading'))}</p>
+                                {loaded && <p className="text-xs text-gray-700">{t('library.pages', { done: loaded.completedPages, total: loaded.totalPages })} · {formatDate(loaded.updatedAt)}{loaded.guestName ? ` · ${t('library.with', { name: loaded.guestName })}` : ''}</p>}
+                                {missing && <p className="text-xs text-gray-700">{t('library.gone')}</p>}
                             </div>
-                            {loaded && <button type="button" onClick={() => onOpen(key.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{loaded.completedPages >= loaded.totalPages ? 'Leer' : 'Continuar'}</button>}
-                            {loaded && <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title="Carga sus personajes e historia para crear uno nuevo con cambios" className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? 'Cargando...' : 'Rehacer'}</button>}
-                            {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn bg-gray-200 px-3 py-2">Quitar de la lista</button>}
-                            {loaded && confirmId !== key.id && <button type="button" onClick={() => setConfirmId(key.id)} className="comic-btn bg-red-600 text-white px-3 py-2">Borrar</button>}
+                            {loaded && <button type="button" onClick={() => onOpen(key.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{loaded.completedPages >= loaded.totalPages ? t('common.read') : t('common.continue')}</button>}
+                            {loaded && <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title={t('library.redoHint')} className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? t('common.loading') : t('library.redo')}</button>}
+                            {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn bg-gray-200 px-3 py-2">{t('library.forget')}</button>}
+                            {loaded && confirmId !== key.id && <button type="button" onClick={() => setConfirmId(key.id)} className="comic-btn bg-red-600 text-white px-3 py-2">{t('common.delete')}</button>}
                             {loaded && confirmId === key.id && <>
-                                <button type="button" onClick={() => remove(key)} className="comic-btn bg-red-700 text-white px-3 py-2">Confirmar borrado</button>
-                                <button type="button" onClick={() => setConfirmId(null)} className="comic-btn bg-gray-200 px-3 py-2">Cancelar</button>
+                                <button type="button" onClick={() => remove(key)} className="comic-btn bg-red-700 text-white px-3 py-2">{t('common.confirmDelete')}</button>
+                                <button type="button" onClick={() => setConfirmId(null)} className="comic-btn bg-gray-200 px-3 py-2">{t('common.cancel')}</button>
                             </>}
                         </li>
                     );

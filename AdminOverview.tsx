@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AdminAuthError, adminRequest, errorText, formatCost, formatNumber, formatUsd, type AdminOverview, type UsageTotals } from './adminApi';
+import { t } from './i18n';
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
     return (
@@ -40,60 +41,60 @@ export function AdminOverviewView({ onAuthLost }: { onAuthLost: () => void }) {
     }, [onAuthLost]);
 
     if (error) return <p role="alert" className="error">{error}</p>;
-    if (!overview) return <p role="status">Cargando resumen...</p>;
+    if (!overview) return <p role="status">{t('admin.loadingOverview')}</p>;
 
     const { stories, budget, daily } = overview;
     const maxDailyTokens = Math.max(1, ...daily.map(day => day.tokens.total));
 
     return (
         <>
-            <h1>Resumen</h1>
+            <h1>{t('admin.overview')}</h1>
             {!overview.pricingConfigured && (
-                <p className="notice">No hay tarifas configuradas: se muestran tokens, pero el coste aparece como «sin tarifa». Crea <code>.data/pricing.json</code> (ver README).</p>
+                <p className="notice">{t('admin.noPricing')} <code>.data/pricing.json</code> {t('admin.seeReadme')}</p>
             )}
-            <section className="stats" aria-label="Cómics">
-                <Stat label="Cómics" value={formatNumber(stories.total)} hint={`${stories.active} activos · ${stories.deleted} borrados`} />
-                <Stat label="Completos" value={formatNumber(stories.complete)} />
-                <Stat label="En curso" value={formatNumber(stories.inProgress)} />
-                <Stat label="Coste total (estimado)" value={formatCost(overview.totals)} hint={overview.pricingVersion ? `Tarifa ${overview.pricingVersion}` : undefined} />
+            <section className="stats" aria-label={t('admin.comics')}>
+                <Stat label={t('admin.comics')} value={formatNumber(stories.total)} hint={t('admin.activeDeleted', { active: stories.active, deleted: stories.deleted })} />
+                <Stat label={t('admin.completeCount')} value={formatNumber(stories.complete)} />
+                <Stat label={t('admin.status.inProgress')} value={formatNumber(stories.inProgress)} />
+                <Stat label={t('admin.totalCost')} value={formatCost(overview.totals)} hint={overview.pricingVersion ? t('admin.pricingVersion', { version: overview.pricingVersion }) : undefined} />
             </section>
 
             {(budget.dailyBudgetUsd > 0 || budget.dailyTokenLimit > 0) && (
-                <section className="card" aria-label="Límites diarios">
-                    <h2>Límites de hoy (UTC)</h2>
+                <section className="card" aria-label={t('admin.dailyLimits')}>
+                    <h2>{t('admin.todayLimits')}</h2>
                     {budget.dailyBudgetUsd > 0 && (
-                        <p>Presupuesto: {formatUsd(budget.todayCostUsd)} de {formatUsd(budget.dailyBudgetUsd)}
+                        <p>{t('admin.budgetOf', { used: formatUsd(budget.todayCostUsd), limit: formatUsd(budget.dailyBudgetUsd) })}
                             <progress value={budget.todayCostUsd} max={budget.dailyBudgetUsd} />
                         </p>
                     )}
                     {budget.dailyTokenLimit > 0 && (
-                        <p>Tokens: {formatNumber(budget.todayTokens)} de {formatNumber(budget.dailyTokenLimit)}
+                        <p>{t('admin.tokensOf', { used: formatNumber(budget.todayTokens), limit: formatNumber(budget.dailyTokenLimit) })}
                             <progress value={budget.todayTokens} max={budget.dailyTokenLimit} />
                         </p>
                     )}
                 </section>
             )}
 
-            <section className="card" aria-label="Consumo por periodo">
-                <h2>Consumo</h2>
+            <section className="card" aria-label={t('admin.usageByPeriod')}>
+                <h2>{t('admin.usage')}</h2>
                 <table>
-                    <thead><tr><th scope="col">Periodo</th><th scope="col">Llamadas</th><th scope="col">Errores</th><th scope="col">Tokens</th><th scope="col">Coste</th></tr></thead>
+                    <thead><tr><th scope="col">{t('admin.period')}</th><th scope="col">{t('admin.calls')}</th><th scope="col">{t('admin.errors')}</th><th scope="col">{t('admin.tokens')}</th><th scope="col">{t('admin.cost')}</th></tr></thead>
                     <tbody>
-                        {usageRow('Hoy', overview.today)}
-                        {usageRow('7 días', overview.last7Days)}
-                        {usageRow('30 días', overview.last30Days)}
-                        {usageRow('Total', overview.totals)}
+                        {usageRow(t('admin.today'), overview.today)}
+                        {usageRow(t('admin.days', { days: 7 }), overview.last7Days)}
+                        {usageRow(t('admin.days', { days: 30 }), overview.last30Days)}
+                        {usageRow(t('admin.total'), overview.totals)}
                     </tbody>
                 </table>
                 {overview.draftsUnassigned.calls > 0 && (
-                    <p className="muted small">Incluye {overview.draftsUnassigned.calls} llamadas previas a crear un cómic (propuestas de título) sin asignar.</p>
+                    <p className="muted small">{t('admin.draftCalls', { count: overview.draftsUnassigned.calls })}</p>
                 )}
             </section>
 
-            <section className="card" aria-label="Últimos 30 días">
-                <h2>Últimos 30 días</h2>
+            <section className="card" aria-label={t('admin.last30')}>
+                <h2>{t('admin.last30')}</h2>
                 <table>
-                    <thead><tr><th scope="col">Día</th><th scope="col">Llamadas</th><th scope="col">Tokens</th><th scope="col">Coste</th><th scope="col"><span className="visually-hidden">Volumen</span></th></tr></thead>
+                    <thead><tr><th scope="col">{t('admin.day')}</th><th scope="col">{t('admin.calls')}</th><th scope="col">{t('admin.tokens')}</th><th scope="col">{t('admin.cost')}</th><th scope="col"><span className="visually-hidden">{t('admin.volume')}</span></th></tr></thead>
                     <tbody>
                         {[...daily].reverse().map(day => (
                             <tr key={day.date}>
@@ -101,10 +102,10 @@ export function AdminOverviewView({ onAuthLost }: { onAuthLost: () => void }) {
                                 <td>{formatNumber(day.calls)}</td>
                                 <td>{formatNumber(day.tokens.total)}</td>
                                 <td>{formatUsd(day.costUsd)}</td>
-                                <td><progress value={day.tokens.total} max={maxDailyTokens} aria-label={`Tokens del ${day.date}`} /></td>
+                                <td><progress value={day.tokens.total} max={maxDailyTokens} aria-label={t('admin.tokensOfDay', { date: day.date })} /></td>
                             </tr>
                         ))}
-                        {!daily.length && <tr><td colSpan={5} className="muted">Sin actividad registrada.</td></tr>}
+                        {!daily.length && <tr><td colSpan={5} className="muted">{t('admin.noActivity')}</td></tr>}
                     </tbody>
                 </table>
             </section>

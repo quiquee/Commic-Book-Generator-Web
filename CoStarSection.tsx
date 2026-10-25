@@ -5,6 +5,7 @@ import {
     copyText, errorMessage, fetchPublicBaseUrl, invitationRequest, invitationUrl, pickResponse, storageKeys,
     type Invitation, type InvitationKeys, type InvitationResponse, type StorySettings
 } from './invitations';
+import { t, type MessageKey } from './i18n';
 
 export type CastMode = 'solo' | 'photo' | 'invite';
 
@@ -27,10 +28,10 @@ interface CoStarSectionProps {
     initialActiveId?: string | null;
 }
 
-const MODES: { value: CastMode; label: string; hint: string }[] = [
-    { value: 'solo', label: 'Solo yo', hint: 'Sin coprotagonista' },
-    { value: 'photo', label: 'Tengo su foto', hint: 'La subes tú' },
-    { value: 'invite', label: 'Invitar', hint: 'Le envías un enlace' },
+const MODES: { value: CastMode; label: MessageKey; hint: MessageKey }[] = [
+    { value: 'solo', label: 'costar.solo', hint: 'costar.soloHint' },
+    { value: 'photo', label: 'costar.photo', hint: 'costar.photoHint' },
+    { value: 'invite', label: 'costar.invite', hint: 'costar.inviteHint' },
 ];
 
 function isLoopbackUrl(value: string): boolean {
@@ -44,7 +45,7 @@ function isLoopbackUrl(value: string): boolean {
 function ShareInvitation({ url, hostName, guestName }: { url: string; hostName: string; guestName: string }) {
     const [copied, setCopied] = useState(false);
     const [error, setError] = useState('');
-    const text = `¡Hola, ${guestName}! ${hostName} te invita a ser coprotagonista de un cómic en Mundos Cruzados. Abre el enlace y sube tu foto:`;
+    const text = t('share.text', { guest: guestName, host: hostName });
     // Web Share needs HTTPS; on plain HTTP the copy and WhatsApp buttons still work.
     const canShare = typeof navigator.share === 'function';
 
@@ -63,22 +64,22 @@ function ShareInvitation({ url, hostName, guestName }: { url: string; hostName: 
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch (error) {
-            setError(`${errorMessage(error)} Ábrelo en «Ver enlace y código QR» y cópialo a mano.`);
+            setError(t('share.copyFailed', { reason: errorMessage(error) }));
         }
     };
 
     return (
         <div>
             <div className="flex flex-wrap gap-2">
-                {canShare && <button type="button" onClick={share} className="comic-btn bg-purple-600 text-white px-3 py-2 text-base">Compartir enlace</button>}
-                <button type="button" onClick={copy} className="comic-btn bg-yellow-400 text-black px-3 py-2 text-base">{copied ? '¡Copiado!' : 'Copiar enlace'}</button>
+                {canShare && <button type="button" onClick={share} className="comic-btn bg-purple-600 text-white px-3 py-2 text-base">{t('share.share')}</button>}
+                <button type="button" onClick={copy} className="comic-btn bg-yellow-400 text-black px-3 py-2 text-base">{copied ? t('share.copied') : t('share.copy')}</button>
                 <a href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`} target="_blank" rel="noopener noreferrer" className="comic-btn bg-green-500 text-black px-3 py-2 text-base inline-block">WhatsApp</a>
             </div>
             {error && <p role="alert" className="text-red-700 text-sm mt-1">{error}</p>}
             <details className="mt-2 text-sm">
-                <summary className="cursor-pointer underline">Ver enlace y código QR</summary>
+                <summary className="cursor-pointer underline">{t('share.showLink')}</summary>
                 <div className="flex flex-col sm:flex-row gap-3 mt-2 items-start">
-                    <QRCodeSVG value={url} size={128} title="Código QR de la invitación" />
+                    <QRCodeSVG value={url} size={128} title={t('share.qrTitle')} />
                     <p className="break-all min-w-0">{url}</p>
                 </div>
             </details>
@@ -112,10 +113,10 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
             const saved: unknown = JSON.parse(localStorage.getItem(storageKeys.invitations) || '[]');
             if (!Array.isArray(saved) || !saved.every(item =>
                 item && typeof item.id === 'string' && typeof item.ownerToken === 'string' && typeof item.guestToken === 'string'
-            )) throw new Error('Las invitaciones guardadas no son válidas.');
+            )) throw new Error(t('error.savedInvitationsInvalid'));
             setKeys(saved);
         } catch (error) {
-            setError(`No se pudieron recuperar tus invitaciones: ${errorMessage(error)}`);
+            setError(t('error.loadInvitations', { reason: errorMessage(error) }));
         }
         return () => controller.abort();
     }, []);
@@ -132,7 +133,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
                 if (!controller.signal.aborted) {
                     setInvitations(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
                     setPollError(results.flatMap((result, index) => result.status === 'rejected' ?
-                        [`Invitación ${keys[index].id}: ${errorMessage(result.reason)}`] : []).join(' '));
+                        [t('invite.pollError', { id: keys[index].id, reason: errorMessage(result.reason) })] : []).join(' '));
                 }
             } finally {
                 if (!controller.signal.aborted) timer = setTimeout(refresh, 3000);
@@ -161,9 +162,9 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
         setBusy(true);
         setError('');
         try {
-            if (!hero) throw new Error('Primero sube tu foto de héroe.');
-            if (!hostName.trim() || !guestName.trim()) throw new Error('Escribe tu nombre y el de tu coprotagonista.');
-            if (settings.genre === 'Custom' && !settings.premise.trim()) throw new Error('Escribe de qué va tu historia antes de invitar.');
+            if (!hero) throw new Error(t('invite.heroFirst'));
+            if (!hostName.trim() || !guestName.trim()) throw new Error(t('invite.namesRequired'));
+            if (settings.genre === 'Custom' && !settings.premise.trim()) throw new Error(t('invite.premiseRequired'));
             localStorage.setItem(storageKeys.hostName, hostName.trim());
             const created = await invitationRequest<InvitationKeys>('', undefined, {
                 hostName: hostName.trim(), guestName: guestName.trim(), hero, settings
@@ -193,7 +194,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
         }
     };
 
-    const joinedName = (invitation: Invitation) => invitation.responses.length ? '✓ se ha unido' : '⏳ esperando';
+    const joinedName = (invitation: Invitation) => invitation.responses.length ? `✓ ${t('invite.joined')}` : `⏳ ${t('invite.waiting')}`;
     const others = invitations.filter(item => item.id !== activeId);
     const ready = mode === 'solo' || (mode === 'photo' && friend) || (mode === 'invite' && response);
 
@@ -202,36 +203,36 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
 
     return (
         <div className={`p-3 border-4 border-dashed ${ready ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
-            <p className="font-comic text-lg uppercase font-bold text-purple-900 mb-1">Coprotagonista</p>
-            <div role="radiogroup" aria-label="Coprotagonista" className="grid grid-cols-3 gap-1 mb-2">
+            <p className="font-comic text-lg uppercase font-bold text-purple-900 mb-1">{t('cast.costar')}</p>
+            <div role="radiogroup" aria-label={t('cast.costar')} className="grid grid-cols-3 gap-1 mb-2">
                 {MODES.map(option => (
                     <button key={option.value} type="button" role="radio" aria-checked={mode === option.value}
                         onClick={() => onModeChange(option.value)}
                         className={`border-2 border-black px-1 py-1 leading-tight ${mode === option.value ? 'bg-purple-600 text-white shadow-none' : 'bg-white text-black shadow-[2px_2px_0px_black] hover:bg-purple-100'}`}>
-                        <span className="font-comic text-base block">{option.label}</span>
-                        <span className="text-[11px] block">{option.hint}</span>
+                        <span className="font-comic text-base block">{t(option.label)}</span>
+                        <span className="text-[11px] block">{t(option.hint)}</span>
                     </button>
                 ))}
             </div>
 
-            {mode === 'solo' && <p className="text-sm">La aventura será solo tuya.</p>}
+            {mode === 'solo' && <p className="text-sm">{t('costar.soloText')}</p>}
 
             {mode === 'photo' && (friend ? (
                 <div className="flex gap-3 items-center">
-                    <img src={`data:image/jpeg;base64,${friend.base64}`} alt="Vista previa del coprotagonista" className="w-20 h-20 object-cover border-2 border-black bg-white rotate-[2deg]" />
+                    <img src={`data:image/jpeg;base64,${friend.base64}`} alt={t('setup.costarPreview')} className="w-20 h-20 object-cover border-2 border-black bg-white rotate-[2deg]" />
                     <div className="text-sm">
-                        <p className="text-green-700 font-bold font-comic">✓ LISTO</p>
+                        <p className="text-green-700 font-bold font-comic">✓ {t('common.ready')}</p>
                         <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 inline-block mt-1">
-                            REEMPLAZAR
+                            {t('common.replace')}
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onFriendUpload(e.target.files[0])} />
                         </label>
                     </div>
                 </div>
             ) : (
                 <>
-                    <p className="text-sm mb-2">Sube tú la foto. Esa persona aparecerá en el cómic, pero no podrá seguirlo ni decidir nada.</p>
+                    <p className="text-sm mb-2">{t('costar.photoText')}</p>
                     <label className="comic-btn bg-purple-500 text-white text-lg px-3 py-2 block w-full cursor-pointer text-center">
-                        SUBIR SU FOTO
+                        {t('costar.uploadTheirPhoto')}
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onFriendUpload(e.target.files[0])} />
                     </label>
                 </>
@@ -239,28 +240,28 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
 
             {mode === 'invite' && !activeId && (
                 <>
-                    <p className="text-sm mb-2">Le envías un enlace, sube su propia foto y luego puede leer el cómic contigo y elegir en las decisiones. <strong>El cómic no empieza hasta que se una.</strong></p>
+                    <p className="text-sm mb-2">{t('costar.inviteText')} <strong>{t('costar.inviteGate')}</strong></p>
                     <div className="grid grid-cols-2 gap-2">
-                        <label className="text-sm font-bold">Tu nombre
+                        <label className="text-sm font-bold">{t('invite.yourName')}
                             <input maxLength={80} value={hostName} onChange={event => setHostName(event.target.value)} className="block w-full border-2 border-black p-1 bg-white font-normal" />
                         </label>
-                        <label className="text-sm font-bold">Su nombre
+                        <label className="text-sm font-bold">{t('invite.theirName')}
                             <input maxLength={80} value={guestName} onChange={event => setGuestName(event.target.value)} className="block w-full border-2 border-black p-1 bg-white font-normal" />
                         </label>
                     </div>
                     <button type="button" onClick={createInvitation} disabled={busy || !hero} className="comic-btn bg-purple-600 text-white px-3 py-2 mt-2 w-full disabled:bg-gray-400">
-                        {busy ? 'Creando...' : 'Crear invitación'}
+                        {busy ? t('invite.creating') : t('invite.create')}
                     </button>
-                    {!hero && <p className="text-xs mt-1">Primero sube tu foto de héroe.</p>}
+                    {!hero && <p className="text-xs mt-1">{t('invite.heroFirst')}</p>}
                     {others.length > 0 && (
                         <div className="mt-3">
-                            <p className="text-sm font-bold">O sigue con una invitación anterior:</p>
+                            <p className="text-sm font-bold">{t('invite.previous')}</p>
                             <ul className="flex flex-col gap-1 mt-1">
                                 {others.map(item => (
                                     <li key={item.id} className="flex items-center gap-2 border-2 border-black bg-white px-2 py-1">
                                         <span className="flex-1 text-sm"><strong>{item.guestName}</strong> · {joinedName(item)}</span>
-                                        <button type="button" onClick={() => select(item.id)} className="comic-btn bg-purple-500 text-white text-sm px-2 py-0.5">Usar</button>
-                                        <button type="button" onClick={() => forgetInvitation(item.id)} className="underline text-xs">Quitar</button>
+                                        <button type="button" onClick={() => select(item.id)} className="comic-btn bg-purple-500 text-white text-sm px-2 py-0.5">{t('invite.use')}</button>
+                                        <button type="button" onClick={() => forgetInvitation(item.id)} className="underline text-xs">{t('invite.remove')}</button>
                                     </li>
                                 ))}
                             </ul>
@@ -271,42 +272,42 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
 
             {mode === 'invite' && activeId && (
                 <div className="bg-white border-2 border-black p-2">
-                    {!active ? <p role="status" className="text-sm">Cargando invitación...</p> : <>
-                        <p className="font-comic text-lg">Invitación para {active.guestName}</p>
+                    {!active ? <p role="status" className="text-sm">{t('invite.loading')}</p> : <>
+                        <p className="font-comic text-lg">{t('invite.for', { name: active.guestName })}</p>
                         {!response ? <>
                             <ol className="text-sm list-decimal pl-5 my-1">
-                                <li>Envíale el enlace.</li>
-                                <li>{active.guestName} lo abre y sube su foto.</li>
-                                <li>Aquí se activa el botón para empezar el cómic.</li>
+                                <li>{t('invite.step1')}</li>
+                                <li>{t('invite.step2', { name: active.guestName })}</li>
+                                <li>{t('invite.step3')}</li>
                             </ol>
                             {url ? <ShareInvitation url={url} hostName={active.hostName} guestName={active.guestName} />
-                                : <p role="alert" className="text-red-700 text-sm">La URL base configurada no es válida.</p>}
-                            {isLoopbackUrl(baseUrl) && <p role="note" className="text-xs mt-1 text-amber-800">Estás en «localhost»: el enlace solo funcionará en este equipo. Abre la aplicación con su dirección de red o define PUBLIC_BASE_URL en el servidor.</p>}
-                            <p role="status" className="font-bold text-purple-900 mt-2 animate-pulse">⏳ Esperando a que {active.guestName} se una...</p>
+                                : <p role="alert" className="text-red-700 text-sm">{t('invite.badBaseUrl')}</p>}
+                            {isLoopbackUrl(baseUrl) && <p role="note" className="text-xs mt-1 text-amber-800">{t('invite.localhost')}</p>}
+                            <p role="status" className="font-bold text-purple-900 mt-2 animate-pulse">⏳ {t('invite.waitingFor', { name: active.guestName })}</p>
                         </> : <>
                             <div className="flex gap-3 items-center mt-1">
-                                <img src={`data:image/jpeg;base64,${response.persona.base64}`} alt={`Foto de ${response.name}`} className="w-20 h-20 object-cover border-2 border-black rotate-[2deg]" />
-                                <p role="status" className="text-green-700 font-bold">✓ {response.name} se ha unido. ¡Ya podéis empezar!</p>
+                                <img src={`data:image/jpeg;base64,${response.persona.base64}`} alt={t('invite.photoOf', { name: response.name })} className="w-20 h-20 object-cover border-2 border-black rotate-[2deg]" />
+                                <p role="status" className="text-green-700 font-bold">✓ {t('invite.joinedReady', { name: response.name })}</p>
                             </div>
                             {response.status !== 'accepted' && active.responses.length > 1 && (
                                 <div className="mt-2">
-                                    <p className="text-sm">Ha enviado varias fotos. Elige cuál usar:</p>
+                                    <p className="text-sm">{t('invite.severalPhotos')}</p>
                                     <div className="flex gap-2 mt-1">
                                         {active.responses.map(item => (
                                             <button key={item.id} type="button" aria-pressed={item.id === response.id} onClick={() => setChosenResponseId(item.id)}
                                                 className={`border-4 ${item.id === response.id ? 'border-green-600' : 'border-transparent'}`}>
-                                                <img src={`data:image/jpeg;base64,${item.persona.base64}`} alt={`Foto ${active.responses.indexOf(item) + 1}`} className="w-12 h-12 object-cover" />
+                                                <img src={`data:image/jpeg;base64,${item.persona.base64}`} alt={t('invite.photoNumber', { number: active.responses.indexOf(item) + 1 })} className="w-12 h-12 object-cover" />
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             )}
                         </>}
-                        <p className="text-xs text-gray-700 mt-2">La historia queda fijada tal como la ve {active.guestName}. Para cambiarla, crea otra invitación.</p>
+                        <p className="text-xs text-gray-700 mt-2">{t('invite.storyFixed', { name: active.guestName })}</p>
                     </>}
                     <div className="flex gap-3 mt-1 text-xs">
-                        <button type="button" onClick={() => select(null)} className="underline">Cambiar de invitación</button>
-                        <button type="button" onClick={() => forgetInvitation(activeId)} className="underline">Quitar de mi lista</button>
+                        <button type="button" onClick={() => select(null)} className="underline">{t('invite.change')}</button>
+                        <button type="button" onClick={() => forgetInvitation(activeId)} className="underline">{t('invite.forget')}</button>
                     </div>
                 </div>
             )}

@@ -6,18 +6,21 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GENRES, LANGUAGES, Persona } from './types';
+import { t, type MessageKey } from './i18n';
 
-export const GENRE_LABELS: Record<string, string> = {
-    'Classic Horror': 'Terror clásico',
-    'Superhero Action': 'Acción de superhéroes',
-    'Dark Sci-Fi': 'Ciencia ficción oscura',
-    'High Fantasy': 'Fantasía épica',
-    'Neon Noir Detective': 'Detectives noir y neón',
-    'Wasteland Apocalypse': 'Apocalipsis posapocalíptico',
-    'Lighthearted Comedy': 'Comedia ligera',
-    'Teen Drama / Slice of Life': 'Drama juvenil / Vida cotidiana',
-    Custom: 'Personalizado'
+const GENRE_KEYS: Record<string, MessageKey> = {
+    'Classic Horror': 'genre.horror',
+    'Superhero Action': 'genre.superhero',
+    'Dark Sci-Fi': 'genre.scifi',
+    'High Fantasy': 'genre.fantasy',
+    'Neon Noir Detective': 'genre.noir',
+    'Wasteland Apocalypse': 'genre.apocalypse',
+    'Lighthearted Comedy': 'genre.comedy',
+    'Teen Drama / Slice of Life': 'genre.teen',
+    Custom: 'genre.custom'
 };
+
+export const genreLabel = (genre: string) => GENRE_KEYS[genre] ? t(GENRE_KEYS[genre]) : genre;
 
 const GENRE_ICONS: Record<string, string> = {
     'Classic Horror': '🧛',
@@ -30,12 +33,7 @@ const GENRE_ICONS: Record<string, string> = {
     'Teen Drama / Slice of Life': '🎒'
 };
 
-const PREMISE_IDEAS = [
-    'Nos encogemos hasta el tamaño de una hormiga y tenemos que cruzar el jardín de casa.',
-    'Abrimos una pizzería en Marte y el primer cliente es un alienígena muy exigente.',
-    'Por la noche el museo cobra vida y nosotros somos los vigilantes.',
-    'Descubrimos que nuestro gato es el jefe secreto de una red de espías.'
-];
+const PREMISE_IDEAS: MessageKey[] = ['idea.ant', 'idea.mars', 'idea.museum', 'idea.cat'];
 
 interface StoryPickerProps {
     selectedGenre: string;
@@ -55,39 +53,39 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
 
     return (
         <div className="mb-2">
-            <div role="radiogroup" aria-label="Tipo de historia" className="grid grid-cols-2 gap-2 mb-2">
+            <div role="radiogroup" aria-label={t('story.kind')} className="grid grid-cols-2 gap-2 mb-2">
                 <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
-                    <span className="font-comic text-lg block">📚 Un género</span>
-                    <span className="text-xs block">Elige una aventura ya preparada</span>
+                    <span className="font-comic text-lg block">📚 {t('story.genre')}</span>
+                    <span className="text-xs block">{t('story.genreHint')}</span>
                 </button>
                 <button type="button" role="radio" aria-checked={isCustom} onClick={() => onGenreChange('Custom')} className={kindClass(isCustom)}>
-                    <span className="font-comic text-lg block">✍️ Mi historia</span>
-                    <span className="text-xs block">Escribe tu propia idea</span>
+                    <span className="font-comic text-lg block">✍️ {t('story.custom')}</span>
+                    <span className="text-xs block">{t('story.customHint')}</span>
                 </button>
             </div>
             {isCustom ? (
                 <div>
-                    <p className="font-comic text-base mb-1 font-bold text-gray-800">¿DE QUÉ VA TU HISTORIA?</p>
-                    <textarea aria-label="De qué va tu historia" value={customPremise} onChange={(e) => onPremiseChange(e.target.value)} maxLength={2000}
-                        placeholder="Por ejemplo: dos amigos encuentran un mapa del tesoro en el desván de la abuela..."
+                    <p className="font-comic text-base mb-1 font-bold text-gray-800">{t('story.premiseTitle')}</p>
+                    <textarea aria-label={t('story.premiseLabel')} value={customPremise} onChange={(e) => onPremiseChange(e.target.value)} maxLength={2000}
+                        placeholder={t('story.premisePlaceholder')}
                         className="w-full p-2 border-2 border-black font-comic text-lg h-28 resize-none bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
                     {!readOnly && (
                         <div className="mt-1">
-                            <p className="text-xs text-gray-700">¿Sin ideas? Pulsa una para empezar:</p>
+                            <p className="text-xs text-gray-700">{t('story.ideasHint')}</p>
                             <div className="flex flex-col gap-1 mt-1">
                                 {PREMISE_IDEAS.map(idea => (
-                                    <button key={idea} type="button" onClick={() => onPremiseChange(idea)} className="text-left text-xs border border-black bg-white px-2 py-1 hover:bg-yellow-100">{idea}</button>
+                                    <button key={idea} type="button" onClick={() => onPremiseChange(t(idea))} className="text-left text-xs border border-black bg-white px-2 py-1 hover:bg-yellow-100">{t(idea)}</button>
                                 ))}
                             </div>
                         </div>
                     )}
                 </div>
             ) : (
-                <div role="radiogroup" aria-label="Género" className="grid grid-cols-2 gap-1">
+                <div role="radiogroup" aria-label={t('story.genreLabel')} className="grid grid-cols-2 gap-1">
                     {genres.map(g => (
                         <button key={g} type="button" role="radio" aria-checked={g === selectedGenre} onClick={() => onGenreChange(g)}
                             className={`border-2 border-black px-2 py-1 text-left text-sm font-bold ${g === selectedGenre ? 'bg-red-600 text-white' : 'bg-white text-black hover:bg-yellow-100'}`}>
-                            {GENRE_ICONS[g]} {GENRE_LABELS[g] ?? g}
+                            {GENRE_ICONS[g]} {genreLabel(g)}
                         </button>
                     ))}
                 </div>
@@ -138,15 +136,7 @@ interface SetupProps {
 
 const Footer = () => {
   const [remixIndex, setRemixIndex] = useState(0);
-  const remixes = [
-    "Añade sonidos a las viñetas",
-    "Anima las viñetas con Veo 3",
-    "Traduce a klingon",
-    "Añade un generador de villanos",
-    "Imprime copias físicas",
-    "Añade narración de voz",
-    "Crea un universo compartido"
-  ];
+  const remixes: MessageKey[] = ['remix.sounds', 'remix.animate', 'remix.klingon', 'remix.villains', 'remix.print', 'remix.voice', 'remix.universe'];
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -158,12 +148,12 @@ const Footer = () => {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-black text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center z-[300] border-t-4 border-yellow-400 font-comic">
         <div className="flex items-center gap-2 text-lg md:text-xl">
-            <span className="text-yellow-400 font-bold">IDEA PARA MEJORAR:</span>
-            <span className="animate-pulse">{remixes[remixIndex]}</span>
+            <span className="text-yellow-400 font-bold">{t('footer.idea')}</span>
+            <span className="animate-pulse">{t(remixes[remixIndex])}</span>
         </div>
         <div className="flex items-center gap-4 mt-2 md:mt-0">
-            <span className="text-gray-500 text-sm hidden md:inline">Creado con IA</span>
-            <a href="https://x.com/quiquee" target="_blank" rel="noopener noreferrer" className="text-white hover:text-yellow-400 transition-colors text-xl">Creado por @quiquee</a>
+            <span className="text-gray-500 text-sm hidden md:inline">{t('footer.ai')}</span>
+            <a href="https://x.com/quiquee" target="_blank" rel="noopener noreferrer" className="text-white hover:text-yellow-400 transition-colors text-xl">{t('footer.author', { author: '@quiquee' })}</a>
         </div>
     </div>
   );
@@ -208,33 +198,33 @@ export const Setup: React.FC<SetupProps> = (props) => {
                 
                 <h1 className="font-comic text-5xl text-red-600 leading-none mb-1 tracking-wide inline-block mr-3" style={{textShadow: '2px 2px 0px black'}}>MUNDOS</h1>
                 <h1 className="font-comic text-5xl text-yellow-400 leading-none mb-4 tracking-wide inline-block" style={{textShadow: '2px 2px 0px black'}}>CRUZADOS</h1>
-                <span title="La app está en beta: puede tener fallos y cambiar." className="font-comic text-base bg-black text-yellow-300 border-2 border-yellow-400 px-2 py-0.5 ml-2 align-top inline-block rotate-6">BETA</span>
+                <span title={t('app.betaHint')} className="font-comic text-base bg-black text-yellow-300 border-2 border-yellow-400 px-2 py-0.5 ml-2 align-top inline-block rotate-6">BETA</span>
                 {props.banner}
                 
                 <div className="flex flex-col md:flex-row gap-4 mb-4 text-left">
                     
                     {/* Left Column: Cast */}
                     <div className="flex-1 flex flex-col gap-2">
-                        <div className="font-comic text-xl text-black border-b-4 border-black mb-1">1. LOS PERSONAJES</div>
+                        <div className="font-comic text-xl text-black border-b-4 border-black mb-1">{t('setup.cast')}</div>
                         
                         {/* HERO UPLOAD */}
                         <div className={`p-3 border-4 border-dashed ${props.hero ? 'border-green-500 bg-green-50' : 'border-blue-300 bg-blue-50'} transition-colors relative group`}>
                             <div className="flex justify-between items-center mb-1">
-                                <p className="font-comic text-lg uppercase font-bold text-blue-900">{props.guestMode ? `TE INVITA ${props.hostName}` : 'HÉROE (OBLIGATORIO)'}</p>
-                                {props.hero && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ LISTO</span>}
+                                <p className="font-comic text-lg uppercase font-bold text-blue-900">{props.guestMode ? t('setup.invitedBy', { name: props.hostName ?? '' }) : t('setup.heroRequired')}</p>
+                                {props.hero && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ {t('common.ready')}</span>}
                             </div>
                             
                             {props.hero ? (
                                 <div className="flex gap-3 items-center mt-1">
-                                     <img src={`data:image/jpeg;base64,${props.hero.base64}`} alt="Vista previa del héroe" className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[-2deg]" />
+                                     <img src={`data:image/jpeg;base64,${props.hero.base64}`} alt={t('setup.heroPreview')} className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[-2deg]" />
                                      {!props.guestMode && <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 hover:bg-yellow-300 transition-transform active:scale-95 uppercase">
-                                         REEMPLAZAR
+                                         {t('common.replace')}
                                          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onHeroUpload(e.target.files[0])} />
                                      </label>}
                                 </div>
                             ) : (
                                 <label className="comic-btn bg-blue-500 text-white text-lg px-3 py-3 block w-full hover:bg-blue-400 cursor-pointer text-center">
-                                    SUBIR HÉROE
+                                    {t('setup.uploadHero')}
                                     <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onHeroUpload(e.target.files[0])} />
                                 </label>
                             )}
@@ -243,21 +233,21 @@ export const Setup: React.FC<SetupProps> = (props) => {
                         {/* CO-STAR UPLOAD */}
                         {props.coStarSlot ?? <div className={`p-3 border-4 border-dashed ${props.friend ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
                             <div className="flex justify-between items-center mb-1">
-                                <p className="font-comic text-lg uppercase font-bold text-purple-900">{props.guestMode ? `TU FOTO, ${props.guestName} (OBLIGATORIA)` : 'COPROTAGONISTA (OPCIONAL)'}</p>
-                                {props.friend && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ LISTO</span>}
+                                <p className="font-comic text-lg uppercase font-bold text-purple-900">{props.guestMode ? t('setup.yourPhoto', { name: props.guestName ?? '' }) : t('setup.costarOptional')}</p>
+                                {props.friend && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ {t('common.ready')}</span>}
                             </div>
 
                             {props.friend ? (
                                 <div className="flex gap-3 items-center mt-1">
-                                    <img src={`data:image/jpeg;base64,${props.friend.base64}`} alt="Vista previa del coprotagonista" className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[2deg]" />
+                                    <img src={`data:image/jpeg;base64,${props.friend.base64}`} alt={t('setup.costarPreview')} className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[2deg]" />
                                     {!props.friendPhotoLocked && <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 hover:bg-yellow-300 transition-transform active:scale-95 uppercase">
-                                        REEMPLAZAR
+                                        {t('common.replace')}
                                         <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onFriendUpload(e.target.files[0])} />
                                     </label>}
                                 </div>
                             ) : (
                                 <label className="comic-btn bg-purple-500 text-white text-lg px-3 py-3 block w-full hover:bg-purple-400 cursor-pointer text-center">
-                                    SUBIR COPROTAGONISTA
+                                    {t('setup.uploadCostar')}
                                     <input type="file" accept="image/*" disabled={props.friendPhotoLocked} className="hidden" onChange={(e) => e.target.files?.[0] && props.onFriendUpload(e.target.files[0])} />
                                 </label>
                             )}
@@ -265,13 +255,13 @@ export const Setup: React.FC<SetupProps> = (props) => {
 
                         {/* Privacy Policy Text */}
                         <p className="text-[10px] text-gray-500 leading-tight mt-1 px-1">
-                            Se aplica la Política de uso prohibido. No generes contenido que vulnere el derecho a la privacidad de otras personas.
+                            {t('setup.policy')}
                         </p>
                     </div>
 
                     {/* Right Column: Settings */}
                     <div className="flex-1 flex flex-col gap-2 min-w-0">
-                        <div className="font-comic text-xl text-black border-b-4 border-black mb-1">2. LA HISTORIA</div>
+                        <div className="font-comic text-xl text-black border-b-4 border-black mb-1">{t('setup.story')}</div>
                         {props.storyLockedReason && !props.guestMode && <p role="note" className="text-xs bg-purple-100 border-2 border-purple-400 p-1">🔒 {props.storyLockedReason}</p>}
 
                         {/* Title stays editable even when the story settings are locked by an invitation. */}
@@ -283,7 +273,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                     onGenreChange={props.onGenreChange} onPremiseChange={props.onPremiseChange} />
 
                                 <div className="mb-2">
-                                    <p className="font-comic text-base mb-1 font-bold text-gray-800">IDIOMA</p>
+                                    <p className="font-comic text-base mb-1 font-bold text-gray-800">{t('setup.language')}</p>
                                     <select value={props.selectedLanguage} onChange={(e) => props.onLanguageChange(e.target.value)} className="w-full font-comic text-lg p-1 border-2 border-black uppercase bg-white text-black cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,0.2)]">
                                         {LANGUAGES.map(l => <option key={l.code} value={l.code} className="text-black">{l.label}</option>)}
                                     </select>
@@ -293,15 +283,15 @@ export const Setup: React.FC<SetupProps> = (props) => {
 
                                 {props.titleField && !props.guestMode && (
                                     <div className="mb-2">
-                                        <p className="font-comic text-base mb-1 font-bold text-gray-800">TÍTULO DEL CÓMIC</p>
+                                        <p className="font-comic text-base mb-1 font-bold text-gray-800">{t('title.heading')}</p>
                                         <div className="flex gap-2">
-                                            <input aria-label="Título del cómic" maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder="Se propondrá uno al empezar" className="flex-1 min-w-0 p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                                            <input aria-label={t('title.label')} maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder={t('title.placeholder')} className="flex-1 min-w-0 p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
                                             <button type="button" onClick={props.titleField.onPropose} disabled={props.titleField.busy || props.isTransitioning} className="comic-btn bg-purple-600 text-white text-sm px-3 py-1 whitespace-nowrap disabled:bg-gray-400">
-                                                {props.titleField.busy ? 'Buscando...' : props.titleField.value ? 'Otro título' : 'Proponer título'}
+                                                {props.titleField.busy ? t('title.searching') : props.titleField.value ? t('title.another') : t('title.propose')}
                                             </button>
                                         </div>
                                         <p className="text-xs text-gray-700 mt-1">
-                                            {props.titleField.note ?? (props.titleField.stale ? 'Has cambiado la historia: se propondrá un título nuevo al empezar, salvo que escribas uno.' : 'Se propone un título distinto para cada cómic; puedes editarlo.')}
+                                            {props.titleField.note ?? (props.titleField.stale ? t('title.stale') : t('title.hint'))}
                                         </p>
                                     </div>
                                 )}
@@ -309,7 +299,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                             
                             <label className="flex items-center gap-2 font-comic text-base cursor-pointer text-black mt-1 p-1 hover:bg-yellow-100 rounded border-2 border-transparent hover:border-yellow-300 transition-colors">
                                 <input type="checkbox" checked={props.richMode} disabled={props.guestMode || !!props.storyLockedReason} onChange={(e) => props.onRichModeChange(e.target.checked)} className="w-4 h-4 accent-black" />
-                                <span className="text-black">MODO NOVELA (Diálogos elaborados)</span>
+                                <span className="text-black">{t('setup.richMode')}</span>
                             </label>
                         </div>
                     </div>
@@ -317,7 +307,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
 
                 {props.children}
                 <button onClick={props.onLaunch} disabled={!props.hero || props.isTransitioning || props.launchDisabled} className="comic-btn bg-red-600 text-white text-3xl px-6 py-3 w-full hover:bg-red-500 disabled:bg-gray-400 disabled:cursor-not-allowed uppercase tracking-wider">
-                    {props.launchLabel || (props.isTransitioning ? '¡EN MARCHA!...' : '¡EMPEZAR AVENTURA!')}
+                    {props.launchLabel || (props.isTransitioning ? t('launch.going') : t('launch.start'))}
                 </button>
             </div>
           </div>

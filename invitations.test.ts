@@ -4,7 +4,7 @@ import { fetchPublicBaseUrl, invitationRequest, invitationUrl, normalizeBaseUrl 
 import { LANGUAGES } from './types.ts';
 
 test('offers exactly the five requested languages with Spanish as the default', () => {
-    assert.deepEqual(LANGUAGES.map(language => language.label), ['Español', 'Inglés', 'Francés', 'Gallego', 'Alemán']);
+    assert.deepEqual(LANGUAGES.map(language => language.label), ['Español', 'English', 'Français', 'Galego', 'Deutsch']);
     assert.deepEqual(LANGUAGES.map(language => language.code), ['es-ES', 'en-US', 'fr-FR', 'gl-ES', 'de-DE']);
 });
 

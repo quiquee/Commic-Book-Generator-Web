@@ -100,11 +100,11 @@ async function createComic() {
   return created.payload;
 }
 
-test('the server draws a comic on its own, waits for the decision and notifies once per event', async () => {
+test('the server draws a comic on its own, waits for the decision and notifies once per event in the subscriber language', async () => {
   const { id, ownerToken } = await createComic();
   const read = async () => (await api(`/api/stories/${id}`, { token: ownerToken })).payload;
   const subscribed = await api(`/api/stories/${id}/subscriptions`, { method: 'POST', token: ownerToken, body: {
-    subscription: { endpoint: 'https://push.example/abc', keys: { p256dh: 'p', auth: 'a' } }, url: `/#story=${id}`,
+    subscription: { endpoint: 'https://push.example/abc', keys: { p256dh: 'p', auth: 'a' } }, url: `/#story=${id}`, lang: 'en',
   } });
   assert.equal(subscribed.status, 201);
   assert.equal((await api(`/api/stories/${id}/subscriptions`, { method: 'POST', token: ownerToken, body: {
@@ -118,7 +118,7 @@ test('the server draws a comic on its own, waits for the decision and notifies o
   assert.deepEqual(page.choices, ['Ir', 'Quedarse']);
   assert.match(page.imageUrl, /^data:image\/jpeg;base64,\/9j\//);
   assert.deepEqual(sent.map(({ body, url }) => ({ body, url })), [{
-    body: '¡Hay una decisión pendiente! Entra para elegir cómo sigue la historia.', url: `/#story=${id}`,
+    body: 'A decision is waiting! Come in and choose how the story goes on.', url: `/#story=${id}`,
   }]);
   assert.equal('subscriptions' in waiting || 'notified' in waiting, false);
 
@@ -140,7 +140,7 @@ test('the server draws a comic on its own, waits for the decision and notifies o
   const finished = await until(read, (story) => story.generation?.state === 'finished', 'cómic completo');
   assert.equal(done(finished).length, 12);
   assert.equal(finished.faces.find((face) => face.pageIndex === 3).resolvedChoice, 'Ir');
-  assert.deepEqual(sent.map((payload) => payload.body).at(-1), '¡Tu cómic está terminado! Toca para leerlo.');
+  assert.deepEqual(sent.map((payload) => payload.body).at(-1), 'Your comic is finished! Tap to read it.');
   assert.equal(sent.length, 2);
 });
 
