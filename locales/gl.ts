@@ -349,4 +349,8 @@ export const gl: Record<MessageKey, string> = {
     'admin.deleting': 'Borrando...',
     'admin.deleteForever': 'Borrar definitivamente',
     'admin.downloadImage': 'Descargar imaxe',
+    'credits.builtBy': 'Creado por',
+    'credits.createOwn': 'Crea a túa propia historia',
+    'credits.returning': 'Volvendo ao menú en {seconds}…',
+    'credits.progress': 'Tempo ata volver ao menú',
 };

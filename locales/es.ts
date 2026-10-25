@@ -348,6 +348,10 @@ export const es = {
     "admin.deleting": "Borrando...",
     "admin.deleteForever": "Borrar definitivamente",
     "admin.downloadImage": "Descargar imagen",
+    "credits.builtBy": "Creado por",
+    "credits.createOwn": "Crea tu propia historia",
+    "credits.returning": "Volviendo al menú en {seconds}…",
+    "credits.progress": "Tiempo hasta volver al menú",
 };
 
 export type MessageKey = keyof typeof es;

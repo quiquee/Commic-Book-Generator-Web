@@ -158,7 +158,13 @@ archivos requiere una sola instancia de Node.js.
   cómic; el borrado está reservado a la protagonista. Quien tenga el enlace de
   invitación puede leer el cómic y decidir.
 - **Descargar PDF** está disponible en cualquier momento con las páginas ya
-  dibujadas. **Compartir** aparece sobre cada página: en móviles usa el menú de
+  dibujadas. La portada y la contraportada llevan una franja con un enlace a
+  `https://mundoscruzados.com`, y toda la contraportada es clicable
+  (`pdfBranding.ts`; también en el PDF del panel de administración).
+- **Volver al menú**, al final del cómic, muestra durante 10 segundos los
+  créditos (HCPartners Sàrl, enlace a hcpartners.ch y «Crea tu propia
+  historia») con una barra de progreso; no se puede saltar y después vuelve al
+  menú. **Compartir** aparece sobre cada página: en móviles usa el menú de
   compartir del sistema para enviar la imagen (WhatsApp, correo, etc.); en
   navegadores sin esa función descarga la imagen JPEG.
 - Las imágenes se guardan recomprimidas en JPEG (lado máximo 1024 px), por lo
