@@ -1160,6 +1160,8 @@ export function createAppServer({
     if (!vitePromise) {
       vitePromise = import('vite').then(({ createServer: createViteServer }) => createViteServer({
         configFile: join(process.cwd(), 'vite.config.ts'),
+        // The default loader writes and deletes a temporary file, which `node --watch` takes as a change.
+        configLoader: 'runner',
         server: { middlewareMode: true },
         appType: 'spa',
       }));
@@ -1250,6 +1252,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       join(process.cwd(), 'vite.config.ts'),
       process.cwd(),
       'silent',
+      undefined,
+      'runner', // no temporary file, so `npm run dev` (node --watch) does not restart in a loop
     );
     viteServerConfig = loaded?.config.server ?? {};
   } catch (error) {

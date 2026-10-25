@@ -19,9 +19,12 @@ View your app in AI Studio: https://ai.studio/apps/03a56218-edf3-4378-9f7c-61802
 3. Run the app:
    `npm run dev`
 
+   It restarts by itself (`node --watch`) when a server file changes; Vite
+   already reloads the browser code. Comics being drawn resume after the restart.
+
 The Node.js server runs both Vite and the invitation API at
 the port and interface from `server.port` / `server.host` in `vite.config.ts`
-(currently `http://localhost:7002`). `PORT` or `HOST` in the environment or
+(currently `http://localhost:7000`). `PORT` or `HOST` in the environment or
 `.env.local` override them; if Vite is not installed (e.g. `npm ci --omit=dev`),
 the defaults are port 3000 on `0.0.0.0`.
 `npm run preview` only previews the static frontend and does not provide the
@@ -63,7 +66,7 @@ historia. `?lang=fr` en la URL fuerza un idioma, útil para probar.
    fragmento, y una variable de entorno tiene prioridad sobre `.env.local`. Un
    valor inválido impide arrancar. Si abres la aplicación desde `localhost` sin
    definirla, se avisa de que los enlaces solo funcionarán en ese equipo. Para
-   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:7002`.
+   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:7000`.
    En producción configura el proxy para enviar tanto las páginas como `/api` al
    servidor Node.js. El valor solo cambia los enlaces y QR, no la dirección de
    escucha (`HOST`/`PORT`); los enlaces ya creados se actualizan al reiniciar.
