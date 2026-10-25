@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
+import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
 import { errorMessage } from './invitations';
@@ -7,6 +8,7 @@ import { fetchStory, fetchStoryDelta, restartGeneration, submitChoice, type Stor
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
+import { Credits } from './Credits';
 import { localizeText, t } from './i18n';
 
 interface StoryViewProps {
@@ -22,6 +24,8 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
+    // «Back to menu» at the end of the comic shows the credits before leaving.
+    const [showCredits, setShowCredits] = useState(false);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
@@ -133,6 +137,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         pages.forEach((face, index) => {
             if (index > 0) doc.addPage([480, 720], 'portrait');
             doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
+            addSiteLink(doc, face.type, 480, 720);
         });
         doc.save(`${titleSlug(story.title)}.pdf`);
     };
@@ -207,11 +212,12 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onChoice={choose}
                 onOpenBook={() => setCurrentSheetIndex(1)}
                 onDownload={downloadPDF}
-                onReset={onExit}
+                onReset={() => setShowCredits(true)}
                 onShare={sharePage}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
             {story && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
+            {showCredits && <Credits onDone={onExit} />}
         </>
     );
 }

@@ -349,4 +349,8 @@ export const fr: Record<MessageKey, string> = {
     'admin.deleting': 'Suppression...',
     'admin.deleteForever': 'Supprimer définitivement',
     'admin.downloadImage': 'Télécharger l’image',
+    'credits.builtBy': 'Créé par',
+    'credits.createOwn': 'Crée ta propre histoire',
+    'credits.returning': 'Retour au menu dans {seconds}…',
+    'credits.progress': 'Temps avant le retour au menu',
 };

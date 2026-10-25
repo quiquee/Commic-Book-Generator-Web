@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
+import { addSiteLink } from './pdfBranding';
 import {
     AdminAuthError, adminRequest, errorText, formatCost, formatDate, formatNumber, formatUsd, imageUrl, statusLabel,
     type AdminFace, type AdminStoryDetail, type UsageTotals
@@ -92,6 +93,7 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                 });
                 if (!first) doc.addPage([480, 720], 'portrait');
                 doc.addImage(data, 'JPEG', 0, 0, 480, 720);
+                addSiteLink(doc, face.type, 480, 720);
                 first = false;
             }
             if (first) throw new Error(t('admin.noPagesForPdf'));
