@@ -37,7 +37,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         <main className="login">
             <form onSubmit={submit} className="card">
                 <h1>Administración</h1>
-                <p className="muted">Héroes Infinitos</p>
+                <p className="muted">Mundos Cruzados</p>
                 <label>Contraseña
                     <input type="password" autoComplete="current-password" autoFocus required value={password} onChange={event => setPassword(event.target.value)} />
                 </label>
@@ -84,7 +84,7 @@ export function AdminApp() {
     return (
         <>
             <header className="topbar">
-                <strong>Héroes Infinitos · Administración</strong>
+                <strong>Mundos Cruzados · Administración</strong>
                 <nav aria-label="Principal">
                     <a href="#/" aria-current={active === 'overview' ? 'page' : undefined}>Resumen</a>
                     <a href="#/stories" aria-current={active === 'stories' ? 'page' : undefined}>Cómics</a>

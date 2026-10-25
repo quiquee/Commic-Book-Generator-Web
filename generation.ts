@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { LANGUAGES, MAX_STORY_PAGES, type Beat, type ComicFace, type Persona } from './types';
-import type { StorySettings } from './invitations';
+import { LANGUAGES, MAX_STORY_PAGES, type Beat, type ComicFace, type Persona } from './types.ts';
+import type { StorySettings } from './invitations.ts';
 
 export const MODEL_TEXT_NAME = 'gemini-3.8-flash';
 export const MODEL_IMAGE_GEN_NAME = 'gemini-nano-banana-2.1';
@@ -35,7 +35,7 @@ CAST: protagonist "${request.hostName || 'the hero'}"${request.guestName ? ` and
 Invent 5 ORIGINAL titles IN ${langName.toUpperCase()}: 2 to 6 words each, evocative, in the spirit of classic comic mastheads, no quotes, no numbering, no subtitle after a colon, max 50 characters.
 Every title must be clearly different from each other AND from this list of already used titles (also avoid trivial variations of them):
 ${forbidden.length ? forbidden.map(title => `- ${title}`).join('\n') : '- (none yet)'}
-Do not use "Infinite Heroes", "Héroes Infinitos" or translations of it. Randomness seed: ${seed}.
+Do not use "Mundos Cruzados" or translations of it. Randomness seed: ${seed}.
 
 OUTPUT STRICT JSON ONLY: { "titles": ["...", "...", "...", "...", "..."] }`;
     const response = await ai.models.generateContent({
@@ -45,7 +45,7 @@ OUTPUT STRICT JSON ONLY: { "titles": ["...", "...", "...", "...", "..."] }`;
     });
     const parsed = parseJson(response.text);
     const titles = Array.isArray(parsed.titles) ? parsed.titles : Array.isArray(parsed) ? parsed : [];
-    if (!titles.length) throw new Error('Gemini no propuso ningún título.');
+    if (!titles.length) throw new Error('No se recibió ninguna propuesta de título.');
     return titles;
 }
 
@@ -92,7 +92,7 @@ export function apiErrorMessage(error: unknown): string {
 export function fatalGenerationMessage(error: unknown): string | null {
     const message = apiErrorMessage(error);
     if (message.includes('LIMITE_DE_CONSUMO')) return message.replace(/^LIMITE_DE_CONSUMO:\s*/, '');
-    if (message.includes('GEMINI_API_KEY no configurada')) return message;
+    if (message.includes('El servicio de generación no está configurado')) return message;
     return null;
 }
 
@@ -297,7 +297,7 @@ export async function generateImage(
     if (previousImage) promptText += 'CONTINUITY: REFERENCE 3 is the previous page of this same issue. Keep every character looking exactly like there (same outfit, hair, accessories, proportions) and keep the same rendering technique. ';
 
     if (type === 'cover') {
-        promptText += `TYPE: Comic Book Cover. TITLE LOGO (large, bold comic lettering, spelled EXACTLY like this): "${context.title}". Small imprint text in a corner: "INFINITE HEROES". Main visual: Dynamic action shot of [HERO] (Use REFERENCE 1)${context.friend ? ' together with [CO-STAR] (Use REFERENCE 2)' : ''}, wearing the costumes from the CHARACTER BIBLE.`;
+        promptText += `TYPE: Comic Book Cover. TITLE LOGO (large, bold comic lettering, spelled EXACTLY like this): "${context.title}". Small publisher box in a corner containing exactly three lines of text, each line centered horizontally in the box: line 1 "MUNDOS", line 2 "CRUZADOS", line 3 ".COM" (together they read mundoscruzados.com; no other text in the box). Main visual: Dynamic action shot of [HERO] (Use REFERENCE 1)${context.friend ? ' together with [CO-STAR] (Use REFERENCE 2)' : ''}, wearing the costumes from the CHARACTER BIBLE.`;
     } else if (type === 'back_cover') {
         promptText += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser for the next issue of "${context.title}". Text: a localized translation of "NEXT ISSUE SOON" in ${langName}, plus the title "${context.title}" in smaller lettering.`;
     } else {

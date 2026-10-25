@@ -206,7 +206,7 @@ test('proxy missing key is an exact Google-style 503', async (t) => {
   const response = await fixture.api();
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: { code: 503,
-    message: 'GEMINI_API_KEY no configurada en el servidor.', status: 'UNAVAILABLE' } });
+    message: 'El servicio de generación no está configurado.', status: 'UNAVAILABLE' } });
 });
 
 test('proxy sends only server credentials, records image, text, blocked and failed responses and sanitizes secrets', async (t) => {

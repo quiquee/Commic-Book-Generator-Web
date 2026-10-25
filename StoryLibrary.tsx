@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { errorMessage } from './invitations';
-import { fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory, type StoryKey, type StoryMeta } from './stories';
+import { fetchStory, fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory, type StoryDocument, type StoryKey, type StoryMeta } from './stories';
 
 interface StoryLibraryProps {
     onOpen: (storyId: string) => void;
+    // Loads a comic's parameters into the setup so a new one can be made from them.
+    onRedo: (story: StoryDocument) => void;
     onTitlesLoaded?: (titles: string[]) => void;
 }
 
-export function StoryLibrary({ onOpen, onTitlesLoaded }: StoryLibraryProps) {
+export function StoryLibrary({ onOpen, onRedo, onTitlesLoaded }: StoryLibraryProps) {
     const [keys, setKeys] = useState<StoryKey[]>([]);
     const [stories, setStories] = useState<Record<string, StoryMeta | { missing: true }>>({});
     const [error, setError] = useState('');
     const [confirmId, setConfirmId] = useState<string | null>(null);
+    const [redoingId, setRedoingId] = useState<string | null>(null);
 
     useEffect(() => {
         try {
@@ -59,6 +62,19 @@ export function StoryLibrary({ onOpen, onTitlesLoaded }: StoryLibraryProps) {
         }
     };
 
+    // The library only has summaries; the photos come with the full comic.
+    const redo = async (key: StoryKey) => {
+        setRedoingId(key.id);
+        setError('');
+        try {
+            onRedo(await fetchStory(key.id, { kind: 'owner', token: key.ownerToken }));
+        } catch (failure) {
+            setError(`No se pudo cargar el cómic para rehacerlo: ${errorMessage(failure)}`);
+        } finally {
+            setRedoingId(null);
+        }
+    };
+
     if (!keys.length) return null;
 
     return (
@@ -79,6 +95,7 @@ export function StoryLibrary({ onOpen, onTitlesLoaded }: StoryLibraryProps) {
                                 {missing && <p className="text-xs text-gray-700">Ya no existe en el servidor.</p>}
                             </div>
                             {loaded && <button type="button" onClick={() => onOpen(key.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{loaded.completedPages >= loaded.totalPages ? 'Leer' : 'Continuar'}</button>}
+                            {loaded && <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title="Carga sus personajes e historia para crear uno nuevo con cambios" className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? 'Cargando...' : 'Rehacer'}</button>}
                             {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn bg-gray-200 px-3 py-2">Quitar de la lista</button>}
                             {loaded && confirmId !== key.id && <button type="button" onClick={() => setConfirmId(key.id)} className="comic-btn bg-red-600 text-white px-3 py-2">Borrar</button>}
                             {loaded && confirmId === key.id && <>

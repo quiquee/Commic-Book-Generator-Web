@@ -318,3 +318,19 @@ test('deletion requires mutation protections, retains usage and audits privately
   assert.equal((await stat(auditPath)).mode & 0o777, 0o600);
   assert.equal((await stat(join(directory, 'private'))).mode & 0o777, 0o700);
 });
+
+test('continuing a comic hands its owner key only to a logged-in admin request and audits it', async (t) => {
+  const { request, login, directory } = await fixture(t);
+  const path = '/api/admin/stories/active/continue';
+  assert.equal((await request(path, { method: 'POST', headers: { 'X-Admin-Request': '1' } })).status, 401);
+  const { cookie } = await login();
+  assert.equal((await request(path, { method: 'POST', headers: { Cookie: cookie } })).status, 403);
+  assert.equal((await request(path, { headers: { Cookie: cookie } })).status, 404);
+  const missing = await request('/api/admin/stories/nope/continue', { method: 'POST', headers: { Cookie: cookie, 'X-Admin-Request': '1' } });
+  assert.equal(missing.status, 404);
+  const granted = await request(path, { method: 'POST', headers: { Cookie: cookie, 'X-Admin-Request': '1' } });
+  assert.equal(granted.status, 200);
+  assert.deepEqual(await granted.json(), { id: 'active', ownerToken: 'OWNER_SECRET' });
+  const entries = (await readFile(join(directory, 'private', 'audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(entries.filter((entry) => entry.action === 'story_continue').map((entry) => entry.storyId), ['active']);
+});

@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     port: 7000,
     host: '0.0.0.0',
-    allowedHosts: ['bicho','bicho.hcpartners.ch','localhost'],
+    allowedHosts: ['mundoscruzados.com','bicho','comic.hcpartners.ch','localhost'],
   },
   plugins: [react()],
   build: {

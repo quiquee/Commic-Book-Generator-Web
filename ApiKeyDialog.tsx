@@ -31,7 +31,7 @@ export const ApiKeyDialog: React.FC<ApiKeyDialogProps> = ({ onContinue }) => {
         <div className="bg-gray-100 border-2 border-black border-dashed p-4 mb-6 text-left relative">
              <div className="absolute -top-3 left-4 bg-black text-white px-2 font-comic text-sm uppercase">Informe de misión</div>
              <p className="font-sans text-sm text-gray-800 leading-relaxed">
-                Gemini 3 Pro Image Preview es un modelo potente que requiere un proyecto con facturación habilitada para funcionar.
+                El modelo de imágenes requiere un proyecto con facturación habilitada para funcionar.
                 <br/>
                 <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-blue-600 underline hover:text-blue-800 font-bold">Consulta la documentación de facturación &rarr;</a>
              </p>

@@ -138,13 +138,13 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
             onPremiseChange={() => {}} onRichModeChange={() => {}}
             onLaunch={join}
             launchDisabled={!photo || busy || !!responseId}
-            launchLabel={busy ? 'Procesando...' : responseId ? 'Solicitud enviada' : '¡Empezar historia juntos!'}
+            launchLabel={busy ? 'Procesando...' : responseId ? '¡Te has unido!' : '¡Me apunto!'}
         >
             <div className="text-left border-2 border-black bg-blue-50 p-3 mb-4">
-                <p>Has recibido una invitación de <strong>{invitation.hostName}</strong> para ser coprotagonista como <strong>{invitation.guestName}</strong>.</p>
-                {!responseId && <p>Sube únicamente tu foto y pulsa «Empezar historia juntos». El protagonista confirmará tu participación y creará la historia desde su dispositivo.</p>}
-                {status === 'pending' && <p role="status" className="font-bold">Foto enviada. Esperando la confirmación de {invitation.hostName}...</p>}
-                {status === 'accepted' && <p role="status" className="font-bold text-green-800">¡{invitation.hostName} ha aceptado! El cómic aparecerá en la lista de abajo en cuanto empiece a crearse.</p>}
+                <p><strong>{invitation.hostName}</strong> te invita a ser coprotagonista de su cómic como <strong>{invitation.guestName}</strong>.</p>
+                {!responseId && <p>Sube tu foto y pulsa «¡Me apunto!». En cuanto lo hagas, {invitation.hostName} podrá empezar el cómic; luego podrás leerlo aquí y elegir en las decisiones.</p>}
+                {status === 'pending' && <p role="status" className="font-bold">Foto enviada. {invitation.hostName} ya puede empezar el cómic: aparecerá abajo en cuanto lo haga.</p>}
+                {status === 'accepted' && <p role="status" className="font-bold text-green-800">¡{invitation.hostName} ha empezado el cómic! Ábrelo en la lista de abajo.</p>}
                 {error && <p role="alert" className="text-red-700">{error}</p>}
             </div>
             {!!invitation.stories?.length && (

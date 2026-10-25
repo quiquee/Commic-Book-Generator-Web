@@ -95,6 +95,32 @@ export function invitationUrl(baseUrl: string, keys: InvitationKeys): string {
     return `${normalizeBaseUrl(baseUrl)}/#${new URLSearchParams({ join: keys.id, token: keys.guestToken })}`;
 }
 
+// The response a new comic would use: the accepted one, or else the chosen (default: latest) pending one.
+export function pickResponse(invitation: Invitation, chosenId: string | null): InvitationResponse | null {
+    return invitation.responses.find(item => item.status === 'accepted')
+        ?? invitation.responses.find(item => item.id === chosenId)
+        ?? invitation.responses[invitation.responses.length - 1]
+        ?? null;
+}
+
+// The Clipboard API only exists on HTTPS or localhost; plain-HTTP hosts (e.g. on a LAN) need the legacy path.
+export async function copyText(text: string): Promise<void> {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    if (!copied) throw new Error('No se pudo copiar el enlace.');
+}
+
 export async function invitationRequest<T>(
     path: string,
     token?: string,

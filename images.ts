@@ -32,9 +32,3 @@ export async function toJpegDataUrl(source: Blob, maxDimension: number, quality:
         if ('close' in bitmap) bitmap.close();
     }
 }
-
-// Re-encodes any image data URL as a bounded JPEG so stored pages and model references stay small.
-export async function compressImage(dataUrl: string, maxDimension = 1024, quality = 0.85): Promise<string> {
-    const blob = await (await fetch(dataUrl)).blob();
-    return toJpegDataUrl(blob, maxDimension, quality);
-}

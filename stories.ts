@@ -1,6 +1,5 @@
 import type { ComicFace, Persona } from './types.ts';
 import { invitationRequest, type StorySettings } from './invitations.ts';
-export { compressImage } from './images.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
@@ -20,6 +19,15 @@ export interface StorySummary {
     totalPages: number;
 }
 
+// Progress of the server-side generator; null for comics it has not touched yet.
+export interface GenerationStatus {
+    state: 'queued' | 'styling' | 'generating' | 'retrying' | 'waiting' | 'finished' | 'stopped';
+    pageIndex?: number;
+    attempt?: number;
+    reason?: string;
+    at: number;
+}
+
 export interface StoryMeta extends StorySummary {
     hostName: string;
     guestName: string;
@@ -28,6 +36,9 @@ export interface StoryMeta extends StorySummary {
     styleGuide: string;
     version: number;
     role: 'owner' | 'guest';
+    generation: GenerationStatus | null;
+    // Only sent to the owner.
+    invitationId?: string | null;
 }
 
 export interface StoryDocument extends StoryMeta {
@@ -82,12 +93,29 @@ export function saveStoryKeys(keys: StoryKey[]): void {
     localStorage.setItem(storyStorageKey, JSON.stringify(keys));
 }
 
-export function findOwnerToken(storyId: string): string | null {
+// Keys an admin obtained to continue other people's comics: kept for this tab only, apart from «Mis cómics».
+const adminStoryKeysKey = 'infinite-heroes.admin-story-keys';
+
+function loadAdminStoryKeys(): StoryKey[] {
     try {
-        return loadStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
+        const saved: unknown = JSON.parse(sessionStorage.getItem(adminStoryKeysKey) || '[]');
+        return Array.isArray(saved) ? saved.filter((item): item is StoryKey =>
+            item && typeof item.id === 'string' && typeof item.ownerToken === 'string') : [];
     } catch {
-        return null;
+        return [];
     }
+}
+
+export function rememberAdminStoryKey(key: StoryKey): void {
+    sessionStorage.setItem(adminStoryKeysKey, JSON.stringify([...loadAdminStoryKeys().filter(item => item.id !== key.id), key]));
+}
+
+export function findOwnerToken(storyId: string): string | null {
+    let own: string | null = null;
+    try {
+        own = loadStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
+    } catch { /* fall back to admin keys */ }
+    return own ?? loadAdminStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
 }
 
 export function authToken(auth: StoryAuth): string {
@@ -131,7 +159,7 @@ export interface CreateStoryBody {
     friend: Persona | null;
     settings: StorySettings;
     tone: string;
-    invitation: { id: string; ownerToken: string } | null;
+    invitation: { id: string; ownerToken: string; responseId?: string } | null;
     draftId?: string;
 }
 
@@ -156,17 +184,18 @@ export function fetchStoryDelta(id: string, auth: StoryAuth, after: number, sign
     return storyRequest<StoryDelta>(`/${id}?after=${after}`, auth, { signal });
 }
 
-export function saveFace(id: string, auth: StoryAuth, face: ComicFace): Promise<{ version: number }> {
-    const { version: _ignored, ...body } = face;
-    return storyRequest(`/${id}/faces/${face.id}`, auth, { method: 'PUT', body });
-}
-
-export function patchStory(id: string, auth: StoryAuth, body: Partial<Pick<StoryDocument, 'friend' | 'styleGuide' | 'tone' | 'title'>>): Promise<{ version: number }> {
-    return storyRequest(`/${id}`, auth, { method: 'PATCH', body });
-}
-
 export function submitChoice(id: string, auth: StoryAuth, faceId: string, choice: string): Promise<{ version: number; faceId: string; resolvedChoice: string }> {
     return storyRequest(`/${id}/choices`, auth, { body: { faceId, choice } });
+}
+
+// Asks the server to (re)start drawing the comic, e.g. after it stopped on an error.
+export function restartGeneration(id: string, auth: StoryAuth): Promise<{ started: boolean }> {
+    return storyRequest(`/${id}/generate`, auth, { body: {} });
+}
+
+// `url` is where the notification takes the reader back to (this same comic, with the same credentials).
+export function subscribeToStory(id: string, auth: StoryAuth, subscription: PushSubscriptionJSON, url: string): Promise<{ subscribed: boolean }> {
+    return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url } });
 }
 
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {

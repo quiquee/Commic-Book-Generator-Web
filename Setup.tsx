@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GENRES, LANGUAGES, Persona } from './types';
 
 export const GENRE_LABELS: Record<string, string> = {
@@ -17,6 +17,83 @@ export const GENRE_LABELS: Record<string, string> = {
     'Lighthearted Comedy': 'Comedia ligera',
     'Teen Drama / Slice of Life': 'Drama juvenil / Vida cotidiana',
     Custom: 'Personalizado'
+};
+
+const GENRE_ICONS: Record<string, string> = {
+    'Classic Horror': '🧛',
+    'Superhero Action': '🦸',
+    'Dark Sci-Fi': '👽',
+    'High Fantasy': '🐉',
+    'Neon Noir Detective': '🕵️',
+    'Wasteland Apocalypse': '☢️',
+    'Lighthearted Comedy': '😂',
+    'Teen Drama / Slice of Life': '🎒'
+};
+
+const PREMISE_IDEAS = [
+    'Nos encogemos hasta el tamaño de una hormiga y tenemos que cruzar el jardín de casa.',
+    'Abrimos una pizzería en Marte y el primer cliente es un alienígena muy exigente.',
+    'Por la noche el museo cobra vida y nosotros somos los vigilantes.',
+    'Descubrimos que nuestro gato es el jefe secreto de una red de espías.'
+];
+
+interface StoryPickerProps {
+    selectedGenre: string;
+    customPremise: string;
+    readOnly: boolean;
+    onGenreChange: (val: string) => void;
+    onPremiseChange: (val: string) => void;
+}
+
+// Writing your own story is offered as an equal alternative to the ready-made genres, not as the last genre.
+const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise, readOnly, onGenreChange, onPremiseChange }) => {
+    const isCustom = selectedGenre === 'Custom';
+    const lastGenre = useRef(isCustom ? GENRES[0] : selectedGenre);
+    if (!isCustom) lastGenre.current = selectedGenre;
+    const genres = GENRES.filter(g => g !== 'Custom' && (!readOnly || g === selectedGenre));
+    const kindClass = (active: boolean) => `border-2 border-black p-2 text-left leading-tight ${active ? 'bg-black text-yellow-300' : 'bg-white text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-yellow-100'}`;
+
+    return (
+        <div className="mb-2">
+            <div role="radiogroup" aria-label="Tipo de historia" className="grid grid-cols-2 gap-2 mb-2">
+                <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
+                    <span className="font-comic text-lg block">📚 Un género</span>
+                    <span className="text-xs block">Elige una aventura ya preparada</span>
+                </button>
+                <button type="button" role="radio" aria-checked={isCustom} onClick={() => onGenreChange('Custom')} className={kindClass(isCustom)}>
+                    <span className="font-comic text-lg block">✍️ Mi historia</span>
+                    <span className="text-xs block">Escribe tu propia idea</span>
+                </button>
+            </div>
+            {isCustom ? (
+                <div>
+                    <p className="font-comic text-base mb-1 font-bold text-gray-800">¿DE QUÉ VA TU HISTORIA?</p>
+                    <textarea aria-label="De qué va tu historia" value={customPremise} onChange={(e) => onPremiseChange(e.target.value)} maxLength={2000}
+                        placeholder="Por ejemplo: dos amigos encuentran un mapa del tesoro en el desván de la abuela..."
+                        className="w-full p-2 border-2 border-black font-comic text-lg h-28 resize-none bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                    {!readOnly && (
+                        <div className="mt-1">
+                            <p className="text-xs text-gray-700">¿Sin ideas? Pulsa una para empezar:</p>
+                            <div className="flex flex-col gap-1 mt-1">
+                                {PREMISE_IDEAS.map(idea => (
+                                    <button key={idea} type="button" onClick={() => onPremiseChange(idea)} className="text-left text-xs border border-black bg-white px-2 py-1 hover:bg-yellow-100">{idea}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div role="radiogroup" aria-label="Género" className="grid grid-cols-2 gap-1">
+                    {genres.map(g => (
+                        <button key={g} type="button" role="radio" aria-checked={g === selectedGenre} onClick={() => onGenreChange(g)}
+                            className={`border-2 border-black px-2 py-1 text-left text-sm font-bold ${g === selectedGenre ? 'bg-red-600 text-white' : 'bg-white text-black hover:bg-yellow-100'}`}>
+                            {GENRE_ICONS[g]} {GENRE_LABELS[g] ?? g}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 };
 
 interface SetupProps {
@@ -41,11 +118,19 @@ interface SetupProps {
     launchDisabled?: boolean;
     launchLabel?: string;
     friendPhotoLocked?: boolean;
+    // Replaces the plain co-star photo upload (the host's setup uses CoStarSection).
+    coStarSlot?: React.ReactNode;
+    // When set, the story settings are read-only and this explains why.
+    storyLockedReason?: string;
+    // Shown under the heading (e.g. which comic is being redone).
+    banner?: React.ReactNode;
     children?: React.ReactNode;
     titleField?: {
         value: string;
         busy: boolean;
         stale: boolean;
+        // Overrides the hint under the field (e.g. for the default title).
+        note?: string;
         onChange: (value: string) => void;
         onPropose: () => void;
     };
@@ -77,7 +162,7 @@ const Footer = () => {
             <span className="animate-pulse">{remixes[remixIndex]}</span>
         </div>
         <div className="flex items-center gap-4 mt-2 md:mt-0">
-            <span className="text-gray-500 text-sm hidden md:inline">Creado con Gemini</span>
+            <span className="text-gray-500 text-sm hidden md:inline">Creado con IA</span>
             <a href="https://x.com/quiquee" target="_blank" rel="noopener noreferrer" className="text-white hover:text-yellow-400 transition-colors text-xl">Creado por @quiquee</a>
         </div>
     </div>
@@ -110,7 +195,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
             </div>
         )}
         
-        <div className={`fixed inset-0 z-[200] overflow-y-auto`}
+        <div id="setup-scroll" className={`fixed inset-0 z-[200] overflow-y-auto`}
              style={{
                  background: props.isTransitioning ? 'transparent' : 'rgba(0,0,0,0.85)', 
                  backdropFilter: props.isTransitioning ? 'none' : 'blur(6px)',
@@ -121,8 +206,10 @@ export const Setup: React.FC<SetupProps> = (props) => {
             {/* Compacted width and internal spacing */}
             <div className="max-w-[900px] w-full bg-white p-4 md:p-5 rotate-1 border-[6px] border-black shadow-[12px_12px_0px_rgba(0,0,0,0.6)] text-center relative">
                 
-                <h1 className="font-comic text-5xl text-red-600 leading-none mb-1 tracking-wide inline-block mr-3" style={{textShadow: '2px 2px 0px black'}}>HÉROES</h1>
-                <h1 className="font-comic text-5xl text-yellow-400 leading-none mb-4 tracking-wide inline-block" style={{textShadow: '2px 2px 0px black'}}>INFINITOS</h1>
+                <h1 className="font-comic text-5xl text-red-600 leading-none mb-1 tracking-wide inline-block mr-3" style={{textShadow: '2px 2px 0px black'}}>MUNDOS</h1>
+                <h1 className="font-comic text-5xl text-yellow-400 leading-none mb-4 tracking-wide inline-block" style={{textShadow: '2px 2px 0px black'}}>CRUZADOS</h1>
+                <span title="La app está en beta: puede tener fallos y cambiar." className="font-comic text-base bg-black text-yellow-300 border-2 border-yellow-400 px-2 py-0.5 ml-2 align-top inline-block rotate-6">BETA</span>
+                {props.banner}
                 
                 <div className="flex flex-col md:flex-row gap-4 mb-4 text-left">
                     
@@ -154,7 +241,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                         </div>
 
                         {/* CO-STAR UPLOAD */}
-                        <div className={`p-3 border-4 border-dashed ${props.friend ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
+                        {props.coStarSlot ?? <div className={`p-3 border-4 border-dashed ${props.friend ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
                             <div className="flex justify-between items-center mb-1">
                                 <p className="font-comic text-lg uppercase font-bold text-purple-900">{props.guestMode ? `TU FOTO, ${props.guestName} (OBLIGATORIA)` : 'COPROTAGONISTA (OPCIONAL)'}</p>
                                 {props.friend && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ LISTO</span>}
@@ -174,8 +261,8 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                     <input type="file" accept="image/*" disabled={props.friendPhotoLocked} className="hidden" onChange={(e) => e.target.files?.[0] && props.onFriendUpload(e.target.files[0])} />
                                 </label>
                             )}
-                        </div>
-                        
+                        </div>}
+
                         {/* Privacy Policy Text */}
                         <p className="text-[10px] text-gray-500 leading-tight mt-1 px-1">
                             Se aplica la Política de uso prohibido. No generes contenido que vulnere el derecho a la privacidad de otras personas.
@@ -183,17 +270,17 @@ export const Setup: React.FC<SetupProps> = (props) => {
                     </div>
 
                     {/* Right Column: Settings */}
-                    <fieldset disabled={props.guestMode} className="flex-1 flex flex-col gap-2 min-w-0">
+                    <div className="flex-1 flex flex-col gap-2 min-w-0">
                         <div className="font-comic text-xl text-black border-b-4 border-black mb-1">2. LA HISTORIA</div>
-                        
+                        {props.storyLockedReason && !props.guestMode && <p role="note" className="text-xs bg-purple-100 border-2 border-purple-400 p-1">🔒 {props.storyLockedReason}</p>}
+
+                        {/* Title stays editable even when the story settings are locked by an invitation. */}
                         <div className="bg-yellow-50 p-3 border-4 border-black h-full flex flex-col justify-between">
                             <div>
-                                <div className="mb-2">
-                                    <p className="font-comic text-base mb-1 font-bold text-gray-800">GÉNERO</p>
-                                    <select value={props.selectedGenre} onChange={(e) => props.onGenreChange(e.target.value)} className="w-full font-comic text-lg p-1 border-2 border-black uppercase bg-white text-black cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,0.2)] focus:outline-none focus:translate-x-[1px] focus:translate-y-[1px] focus:shadow-none transition-all">
-                                        {GENRES.map(g => <option key={g} value={g} className="text-black">{GENRE_LABELS[g] ?? g}</option>)}
-                                    </select>
-                                </div>
+                                <fieldset disabled={props.guestMode || !!props.storyLockedReason} className="min-w-0">
+                                <StoryPicker selectedGenre={props.selectedGenre} customPremise={props.customPremise}
+                                    readOnly={!!props.guestMode || !!props.storyLockedReason}
+                                    onGenreChange={props.onGenreChange} onPremiseChange={props.onPremiseChange} />
 
                                 <div className="mb-2">
                                     <p className="font-comic text-base mb-1 font-bold text-gray-800">IDIOMA</p>
@@ -202,12 +289,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                     </select>
                                 </div>
 
-                                {props.selectedGenre === 'Custom' && (
-                                    <div className="mb-2">
-                                        <p className="font-comic text-base mb-1 font-bold text-gray-800">PREMISA</p>
-                                        <textarea value={props.customPremise} onChange={(e) => props.onPremiseChange(e.target.value)} placeholder="Escribe la premisa de tu historia..." className="w-full p-1 border-2 border-black font-comic text-lg h-16 resize-none shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
-                                    </div>
-                                )}
+                                </fieldset>
 
                                 {props.titleField && !props.guestMode && (
                                     <div className="mb-2">
@@ -219,18 +301,18 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                             </button>
                                         </div>
                                         <p className="text-xs text-gray-700 mt-1">
-                                            {props.titleField.stale ? 'Has cambiado la historia: se propondrá un título nuevo al empezar, salvo que escribas uno.' : 'Gemini propone un título distinto para cada cómic; puedes editarlo.'}
+                                            {props.titleField.note ?? (props.titleField.stale ? 'Has cambiado la historia: se propondrá un título nuevo al empezar, salvo que escribas uno.' : 'Se propone un título distinto para cada cómic; puedes editarlo.')}
                                         </p>
                                     </div>
                                 )}
                             </div>
                             
                             <label className="flex items-center gap-2 font-comic text-base cursor-pointer text-black mt-1 p-1 hover:bg-yellow-100 rounded border-2 border-transparent hover:border-yellow-300 transition-colors">
-                                <input type="checkbox" checked={props.richMode} onChange={(e) => props.onRichModeChange(e.target.checked)} className="w-4 h-4 accent-black" />
+                                <input type="checkbox" checked={props.richMode} disabled={props.guestMode || !!props.storyLockedReason} onChange={(e) => props.onRichModeChange(e.target.checked)} className="w-4 h-4 accent-black" />
                                 <span className="text-black">MODO NOVELA (Diálogos elaborados)</span>
                             </label>
                         </div>
-                    </fieldset>
+                    </div>
                 </div>
 
                 {props.children}

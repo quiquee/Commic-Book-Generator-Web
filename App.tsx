@@ -5,26 +5,23 @@
 */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { GENRES, TONES, LANGUAGES, Persona } from './types';
+import { TONES, LANGUAGES, Persona } from './types';
 import { Setup } from './Setup';
 import { Book } from './Book';
 import { useApiKey } from './useApiKey';
 import { ApiKeyDialog } from './ApiKeyDialog';
-import { InvitationPanel } from './InvitationPanel';
+import { CoStarSection, type ActiveInvitation, type CastMode } from './CoStarSection';
 import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
+import { AdminLibrary } from './AdminLibrary';
 import { StoryView } from './StoryView';
-import { errorMessage, fetchServerConfig, photoFromFile, storageKeys, type Invitation, type InvitationResponse } from './invitations';
-import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth } from './stories';
+import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
+import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument } from './stories';
 import { apiErrorMessage, createAI, fatalGenerationMessage, generateTitleCandidates, isApiKeyError } from './generation';
 import { cleanTitle, isTitleTaken, loadTitleHistory, pickUniqueTitle, rememberTitle } from './titles';
 
-interface LinkedInvitation {
-  id: string;
-  ownerToken: string;
-  hostName: string;
-  guestName: string;
-}
+// Pre-filled title; titles are unique, so once it has been used Gemini proposes one instead.
+const DEFAULT_TITLE = 'Héroes';
 
 function pickTone(genre: string): string {
   let availableTones = TONES;
@@ -41,13 +38,15 @@ const App: React.FC = () => {
 
   const [hero, setHero] = useState<Persona | null>(null);
   const [friend, setFriend] = useState<Persona | null>(null);
-  const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
+  // "Mi historia" (own premise) is the default; the ready-made genres are the alternative.
+  const [selectedGenre, setSelectedGenre] = useState('Custom');
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].code);
   const [customPremise, setCustomPremise] = useState("");
   const [richMode, setRichMode] = useState(true);
-  const [linkedInvitation, setLinkedInvitation] = useState<LinkedInvitation | null>(null);
-  const [title, setTitle] = useState('');
-  const [titleSource, setTitleSource] = useState<'gemini' | 'manual' | null>(null);
+  const [castMode, setCastMode] = useState<CastMode>('solo');
+  const [activeInvitation, setActiveInvitation] = useState<ActiveInvitation | null>(null);
+  const [title, setTitle] = useState(DEFAULT_TITLE);
+  const [titleSource, setTitleSource] = useState<'default' | 'gemini' | 'manual' | null>('default');
   const [titleStale, setTitleStale] = useState(false);
   const [titleBusy, setTitleBusy] = useState(false);
   const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
@@ -57,8 +56,10 @@ const App: React.FC = () => {
   const [route, setRoute] = useState(getRoute);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [setupRevision, setSetupRevision] = useState(0);
+  // Set by «Rehacer»: the comic whose parameters were loaded, its tone and its invitation (if still saved here).
+  const [redoSource, setRedoSource] = useState<{ title: string; genre: string; tone: string; invitationId: string | null } | null>(null);
 
-  useEffect(() => {
+  const loadSavedHero = useCallback(() => {
     try {
       const saved = localStorage.getItem(storageKeys.hero);
       if (saved) {
@@ -68,13 +69,19 @@ const App: React.FC = () => {
           throw new Error('La foto guardada no es válida.');
         }
         setHero({ base64: persona.base64, desc: persona.desc });
+      } else {
+        setHero(null);
       }
     } catch (error) {
       setAppError(`No se pudo recuperar tu foto: ${errorMessage(error)}`);
     }
+  }, []);
+
+  useEffect(() => {
+    loadSavedHero();
     fetchServerConfig()
       .then(config => {
-        if (config.geminiProxy === false) setAppError('El servidor no tiene GEMINI_API_KEY configurada: no se podrán generar títulos ni cómics. Defínela en .env.local y reinicia el servidor.');
+        if (config.geminiProxy === false) setAppError('La generación de cómics no está disponible en este momento. Inténtalo más tarde.');
       })
       .catch(() => { /* the API is reported by the actions that need it */ });
     const onHashChange = () => setRoute(getRoute());
@@ -84,9 +91,11 @@ const App: React.FC = () => {
 
   const resetSetup = useCallback(() => {
     setFriend(null);
-    setLinkedInvitation(null);
-    setTitle('');
-    setTitleSource(null);
+    setCastMode('solo');
+    setActiveInvitation(null);
+    setRedoSource(null);
+    setTitle(DEFAULT_TITLE);
+    setTitleSource('default');
     setTitleStale(false);
     setTitleBusy(false);
     setIsTransitioning(false);
@@ -101,6 +110,36 @@ const App: React.FC = () => {
     else navigate({});
   }, [resetSetup, route]);
 
+  // Discards a loaded «Rehacer»: back to the saved hero photo and an empty story.
+  const startFresh = () => {
+    resetSetup();
+    loadSavedHero();
+    setSelectedGenre('Custom');
+    setSelectedLanguage(LANGUAGES[0].code);
+    setCustomPremise('');
+    setRichMode(true);
+  };
+
+  // Loads every parameter of an existing comic into the setup; the original is kept.
+  const redoStory = (story: StoryDocument) => {
+    resetSetup();
+    let invitationId: string | null = null;
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(storageKeys.invitations) || '[]');
+      if (story.invitationId && Array.isArray(saved) && saved.some(key => key?.id === story.invitationId)) invitationId = story.invitationId;
+    } catch { /* fall back to the co-star photo */ }
+    setHero(story.hero);
+    setSelectedGenre(story.settings.genre);
+    setSelectedLanguage(story.settings.language);
+    setCustomPremise(story.settings.premise);
+    setRichMode(story.settings.richMode);
+    if (invitationId) setCastMode('invite');
+    else if (story.friend) { setCastMode('photo'); setFriend(story.friend); }
+    setRedoSource({ title: story.title, genre: story.settings.genre, tone: story.tone, invitationId });
+    setAppError('');
+    document.getElementById('setup-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // A Gemini title was written for a specific genre/premise/language; changing them makes it stale.
   const changeStorySetting = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
@@ -108,6 +147,7 @@ const App: React.FC = () => {
   };
 
   const forbiddenTitles = useCallback(() => [...new Set([...loadTitleHistory(), ...libraryTitles])], [libraryTitles]);
+  const defaultTitleTaken = titleSource === 'default' && isTitleTaken(title, forbiddenTitles());
 
   // Up to three rounds of candidates; a numbered variant is accepted only as a last resort.
   const generateUniqueTitle = async (genre: string, premise: string, language: string, hostName: string, guestName: string): Promise<string> => {
@@ -121,19 +161,30 @@ const App: React.FC = () => {
       if (fresh) return fresh;
     }
     const numbered = pickUniqueTitle(lastCandidates, forbidden);
-    if (!numbered) throw new Error('Gemini no consiguió proponer un título nuevo. Inténtalo de nuevo o escribe uno.');
+    if (!numbered) throw new Error('No se pudo proponer un título nuevo. Inténtalo de nuevo o escribe uno.');
     return numbered;
   };
 
+  // The invitation only counts while "Invitar" is selected; switching modes keeps it for coming back.
+  const invitation = castMode === 'invite' ? activeInvitation : null;
+  const coStar: Persona | null = castMode === 'photo' ? friend
+    : invitation?.response ? { ...invitation.response.persona, desc: invitation.response.name } : null;
+
   const currentNames = () => ({
-    hostName: linkedInvitation?.hostName || localStorage.getItem(storageKeys.hostName) || 'Protagonista',
-    guestName: linkedInvitation?.guestName || (friend ? 'Coprotagonista' : '')
+    hostName: invitation?.invitation.hostName || localStorage.getItem(storageKeys.hostName) || 'Protagonista',
+    guestName: invitation?.invitation.guestName || (coStar ? 'Coprotagonista' : '')
   });
+
+  // What still blocks the launch button, as its label.
+  const launchBlocker = castMode === 'invite'
+    ? !invitation ? 'PRIMERO CREA LA INVITACIÓN'
+      : !invitation.response ? `ESPERANDO A ${invitation.invitation.guestName.toUpperCase()}...` : null
+    : castMode === 'photo' && !friend ? 'SUBE LA FOTO DE TU COPROTAGONISTA' : null;
 
   const proposeTitle = async () => {
     if (titleBusy) return;
     if (selectedGenre === 'Custom' && !customPremise.trim()) {
-      setAppError('Escribe la premisa de la historia antes de proponer un título.');
+      setAppError('Escribe de qué va tu historia (o elige una idea) antes de proponer un título.');
       return;
     }
     if (!(await validateApiKey())) return;
@@ -153,21 +204,26 @@ const App: React.FC = () => {
     }
   };
 
-  const acceptInvitation = (invitation: Invitation, response: InvitationResponse, ownerToken: string) => {
-    setFriend({ ...response.persona, desc: response.name });
-    setLinkedInvitation({ id: invitation.id, ownerToken, hostName: invitation.hostName, guestName: invitation.guestName });
-    setSelectedGenre(invitation.settings.genre);
-    setSelectedLanguage(invitation.settings.language);
-    setCustomPremise(invitation.settings.premise);
-    setRichMode(invitation.settings.richMode);
+  // A shared comic uses the settings the guest was shown, so they are loaded (and locked) with the invitation.
+  const changeActiveInvitation = (next: ActiveInvitation | null) => {
+    if (next && next.invitation.id !== activeInvitation?.invitation.id) {
+      const { settings } = next.invitation;
+      if (titleSource === 'gemini' && (settings.genre !== selectedGenre || settings.premise !== customPremise
+        || settings.language !== selectedLanguage)) setTitleStale(true);
+      setSelectedGenre(settings.genre);
+      setSelectedLanguage(settings.language);
+      setCustomPremise(settings.premise);
+      setRichMode(settings.richMode);
+    }
+    setActiveInvitation(next);
   };
 
   const launchStory = async () => {
-    if (isTransitioning) return;
+    if (isTransitioning || launchBlocker) return;
     const hasKey = await validateApiKey();
     if (!hasKey || !hero) return;
     if (selectedGenre === 'Custom' && !customPremise.trim()) {
-        setAppError("Escribe la premisa de la historia.");
+        setAppError('Escribe de qué va tu historia, elige una de las ideas o cambia a «Un género».');
         return;
     }
     setAppError('');
@@ -175,7 +231,7 @@ const App: React.FC = () => {
 
     // The title is fixed before the comic exists: generate one unless the protagonist wrote her own.
     let finalTitle = cleanTitle(title);
-    const needsGeneration = !finalTitle || (titleStale && titleSource === 'gemini');
+    const needsGeneration = !finalTitle || (titleStale && titleSource === 'gemini') || defaultTitleTaken;
     try {
       if (needsGeneration) {
         setTitleBusy(true);
@@ -196,7 +252,8 @@ const App: React.FC = () => {
     }
 
     setIsTransitioning(true);
-    const tone = pickTone(selectedGenre);
+    // A redone comic keeps its narrative tone unless the genre was changed.
+    const tone = redoSource?.genre === selectedGenre ? redoSource.tone : pickTone(selectedGenre);
 
     try {
       rememberTitle(finalTitle);
@@ -205,10 +262,12 @@ const App: React.FC = () => {
         hostName,
         guestName,
         hero,
-        friend,
+        friend: coStar,
         settings: { genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode },
         tone,
-        invitation: linkedInvitation ? { id: linkedInvitation.id, ownerToken: linkedInvitation.ownerToken } : null,
+        invitation: invitation?.response ? {
+          id: invitation.invitation.id, ownerToken: invitation.ownerToken, responseId: invitation.response.id
+        } : null,
         draftId
       });
       saveStoryKeys([...loadStoryKeys(), created]);
@@ -232,7 +291,7 @@ const App: React.FC = () => {
        } catch (error) { setAppError(`No se pudo guardar la foto del héroe: ${errorMessage(error)}`); }
   };
   const handleFriendUpload = async (file: File) => {
-       try { setFriend(await photoFromFile(file)); setLinkedInvitation(null); setAppError(''); }
+       try { setFriend(await photoFromFile(file)); setAppError(''); }
        catch (error) { setAppError(`No se pudo subir la foto del coprotagonista: ${errorMessage(error)}`); }
   };
 
@@ -247,7 +306,7 @@ const App: React.FC = () => {
 
   let content: React.ReactNode;
   if (route.story && storyAuth) {
-    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onApiKeyError={() => setShowApiKeyDialog(true)} />;
+    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} />;
   } else if (route.story) {
     content = (
       <div className="bg-white border-4 border-black p-8 max-w-lg text-center">
@@ -263,7 +322,27 @@ const App: React.FC = () => {
           show
           isTransitioning={isTransitioning}
           hero={hero}
-          friend={friend}
+          friend={coStar}
+          coStarSlot={
+            <CoStarSection
+              key={setupRevision}
+              initialActiveId={redoSource?.invitationId}
+              mode={castMode}
+              onModeChange={setCastMode}
+              hero={hero}
+              friend={friend}
+              onFriendUpload={handleFriendUpload}
+              settings={{ genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode }}
+              onActiveChange={changeActiveInvitation}
+            />
+          }
+          banner={redoSource && (
+            <div role="status" className="text-left border-2 border-black bg-yellow-100 p-2 mb-3 flex flex-wrap items-center gap-2">
+              <p className="flex-1 text-sm">🔁 Has cargado los personajes y la historia de <strong>«{redoSource.title}»</strong>. Cambia lo que quieras y pulsa empezar: se creará un cómic nuevo y el original se conserva.</p>
+              <button type="button" onClick={startFresh} className="underline text-sm">Empezar de cero</button>
+            </div>
+          )}
+          storyLockedReason={invitation ? `Historia compartida con ${invitation.invitation.guestName}: no se puede cambiar.` : undefined}
           selectedGenre={selectedGenre}
           selectedLanguage={selectedLanguage}
           customPremise={customPremise}
@@ -275,24 +354,22 @@ const App: React.FC = () => {
           onPremiseChange={changeStorySetting(setCustomPremise)}
           onRichModeChange={setRichMode}
           onLaunch={launchStory}
-          launchDisabled={titleBusy}
-          launchLabel={titleBusy ? 'BUSCANDO TÍTULO...' : undefined}
+          launchDisabled={titleBusy || !!launchBlocker}
+          launchLabel={titleBusy ? 'BUSCANDO TÍTULO...' : launchBlocker ?? (coStar && invitation
+            ? `¡EMPEZAR CON ${invitation.invitation.guestName.toUpperCase()}!` : undefined)}
           titleField={{
             value: title,
             busy: titleBusy,
             stale: titleStale && titleSource === 'gemini',
+            note: defaultTitleTaken ? `Ya usaste «${DEFAULT_TITLE}»: se propondrá un título nuevo al empezar, salvo que escribas uno.`
+              : titleSource === 'default' ? 'Título por defecto: puedes cambiarlo o pulsar «Otro título» para recibir una propuesta.' : undefined,
             onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
             onPropose: proposeTitle
           }}
       >
           {!isTransitioning && <>
-            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onTitlesLoaded={setLibraryTitles} />
-            <InvitationPanel
-              key={setupRevision}
-              hero={hero}
-              settings={{ genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode }}
-              onAccept={acceptInvitation}
-            />
+            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onRedo={redoStory} onTitlesLoaded={setLibraryTitles} />
+            <AdminLibrary key={`admin-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} />
           </>}
       </Setup>
       <Book comicFaces={[]} currentSheetIndex={0} isStarted={false} isSetupVisible={!isTransitioning} onSheetClick={() => {}} onChoice={() => {}} onOpenBook={() => {}} onDownload={() => {}} onReset={() => {}} />

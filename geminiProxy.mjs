@@ -97,7 +97,7 @@ export function createGeminiProxy({
         res.setHeader('allow', 'POST');
         return error(res, 405, 'Método no permitido.');
       }
-      if (!geminiApiKey) return error(res, 503, 'GEMINI_API_KEY no configurada en el servidor.');
+      if (!geminiApiKey) return error(res, 503, 'El servicio de generación no está configurado.');
       const model = match[1];
       if (!models.has(model)) return error(res, 400, 'Modelo no permitido.');
       let scope;
@@ -149,21 +149,21 @@ export function createGeminiProxy({
         try {
           payload = JSON.parse(text);
         } catch {
-          if (response.ok) throw new Error('Respuesta no válida del servidor Gemini.');
-          payload = { error: { message: text || 'Error del servidor Gemini.' } };
+          if (response.ok) throw new Error('Respuesta no válida del servicio de generación.');
+          payload = { error: { message: text || 'Error del servicio de generación.' } };
         }
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Respuesta no válida del servidor Gemini.');
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Respuesta no válida del servicio de generación.');
         ok = response.ok && !payload.error;
         if (!ok) {
           if (httpStatus < 400) httpStatus = 502;
           payload = { error: { code: httpStatus, message: typeof payload.error?.message === 'string'
-            ? payload.error.message : 'Error del servidor Gemini.',
+            ? payload.error.message : 'Error del servicio de generación.',
           status: typeof payload.error?.status === 'string' ? payload.error.status : statuses[httpStatus] ?? 'UNKNOWN' } };
         }
       } catch {
         httpStatus = controller.signal.aborted ? 504 : 502;
         payload = { error: { code: httpStatus, message: httpStatus === 504
-          ? 'Tiempo de espera de Gemini agotado.' : 'No se pudo obtener una respuesta de Gemini.', status: statuses[httpStatus] } };
+          ? 'El generador ha tardado demasiado en responder.' : 'No se pudo obtener respuesta del generador.', status: statuses[httpStatus] } };
       } finally {
         clearTimeout(timer);
       }
