@@ -19,10 +19,33 @@ View your app in AI Studio: https://ai.studio/apps/03a56218-edf3-4378-9f7c-61802
 3. Run the app:
    `npm run dev`
 
+   It restarts by itself (`node --watch`) when a server file changes; Vite
+   already reloads the browser code. Comics being drawn resume after the restart.
+
 The Node.js server runs both Vite and the invitation API at
-`http://localhost:3000`. To use another port or interface, set `PORT` or `HOST`.
+the port and interface from `server.port` / `server.host` in `vite.config.ts`
+(currently `http://localhost:7000`). `PORT` or `HOST` in the environment or
+`.env.local` override them; if Vite is not installed (e.g. `npm ci --omit=dev`),
+the defaults are port 3000 on `0.0.0.0`.
 `npm run preview` only previews the static frontend and does not provide the
 invitation API.
+
+## Idiomas
+
+La interfaz sigue el idioma del navegador: español, inglés, francés, alemán y
+gallego (`navigator.languages`; cualquier otro idioma usa inglés). También se
+elige por defecto el idioma del cómic, el título por defecto y las ideas de
+historia. `?lang=fr` en la URL fuerza un idioma, útil para probar.
+
+- Los textos están en `locales/*.ts`, con el español (`locales/es.ts`) como
+  fuente; TypeScript obliga a que cada idioma tenga las mismas claves. Se usan
+  con `t('clave', { variable })` de `i18n.ts`.
+- El servidor sigue respondiendo en español. `locales/serverText.ts` traduce sus
+  mensajes en el navegador al mostrarlos, y en el servidor para los avisos push,
+  que se envían en el idioma de quien se suscribió. Los mensajes de consola del
+  servidor siguen en español.
+- Los nombres de los idiomas del cómic se muestran en su propio idioma
+  (Español, English, Français, Galego, Deutsch).
 
 ## Invitaciones y coprotagonistas
 
@@ -30,8 +53,11 @@ invitation API.
    navegador; se conserva al crear otro número, volver al menú y recargar la
    aplicación. Puedes reemplazarla desde la pantalla inicial. No se comparte
    automáticamente con otros dispositivos o perfiles del navegador.
-2. Configura la historia e introduce tu nombre y el de la persona invitada.
-3. **URL base de los enlaces**: no se configura en la interfaz. Por defecto es la
+2. Elige la historia: **Un género** (aventuras ya preparadas) o **Mi historia**
+   (escribes tu propia idea, con sugerencias para empezar).
+3. En **Coprotagonista** elige **Solo yo**, **Tengo su foto** (la subes tú; esa
+   persona no participa) o **Invitar** (introduce tu nombre y el suyo).
+4. **URL base de los enlaces**: no se configura en la interfaz. Por defecto es la
    URL con la que abres la aplicación; para fijar otra (por ejemplo la
    dirección pública detrás de un proxy HTTPS) define `PUBLIC_BASE_URL` en
    `.env.local` o en el entorno del servidor, p. ej.
@@ -40,23 +66,48 @@ invitation API.
    fragmento, y una variable de entorno tiene prioridad sobre `.env.local`. Un
    valor inválido impide arrancar. Si abres la aplicación desde `localhost` sin
    definirla, se avisa de que los enlaces solo funcionarán en ese equipo. Para
-   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:3000`.
+   pruebas en la misma red abre la aplicación con `http://IP-DE-TU-EQUIPO:7000`.
    En producción configura el proxy para enviar tanto las páginas como `/api` al
    servidor Node.js. El valor solo cambia los enlaces y QR, no la dirección de
    escucha (`HOST`/`PORT`); los enlaces ya creados se actualizan al reiniciar.
-4. Pulsa **Crear invitación** y comparte el enlace o el código QR. La invitación
-   conserva una copia de tu foto y la configuración de la historia.
-5. La persona invitada ve esa misma pantalla con tu foto y la configuración
-   bloqueadas. Solo puede subir su foto y pulsar **Empezar historia juntos**.
-   No necesita una clave de Gemini.
-6. Su solicitud aparece automáticamente en la pantalla inicial del
-   protagonista. Pulsa **Aceptar y preparar historia** y después **Empezar
-   aventura**. El cómic se crea en el servidor y la generación de páginas se
-   realiza desde el dispositivo del protagonista, que es el único que necesita
-   la clave de Gemini.
+5. Pulsa **Crear invitación** y envía el enlace con **Compartir enlace** (solo
+   en HTTPS, donde el móvil abre su menú de compartir), **Copiar enlace** o
+   **WhatsApp**; el enlace y el QR están en **Ver enlace y código QR**. La
+   invitación conserva una copia de tu foto y la configuración de la historia,
+   que queda bloqueada mientras la invitación esté seleccionada.
+6. La persona invitada ve esa misma pantalla con tu foto y la configuración
+   bloqueadas. Solo puede subir su foto y pulsar **¡Me apunto!**. No necesita
+   una clave de Gemini.
+7. Hasta entonces el botón de inicio muestra **Esperando a…** y no se puede
+   empezar: el servidor también rechaza crear un cómic vinculado a una
+   invitación sin respuesta. Cuando se une, su foto aparece automáticamente y el
+   botón pasa a **¡Empezar con…!**; al pulsarlo se acepta su participación y se
+   crea el cómic.
 
-Puedes crear varias invitaciones y seleccionar una participación por invitación.
-Las solicitudes pendientes se actualizan cada tres segundos. El enlace permite
+## Generación en segundo plano y avisos
+
+El servidor dibuja los cómics por su cuenta (`storyWorker.mjs`): se puede cerrar
+la página y volver más tarde. Se detiene en la página de decisión y continúa en
+cuanto alguien elige. Al arrancar, retoma los cómics sin terminar que no estén
+esperando una decisión ni detenidos por errores. Tras cinco fallos seguidos se
+detiene y el creador puede pulsar **Reintentar**. Las llamadas pasan por el
+proxy de Gemini del propio servidor, así que el consumo y los límites diarios se
+aplican igual. Requiere `GEMINI_API_KEY`; dibuja como máximo dos cómics a la vez.
+
+A los 20 segundos de abrir un cómic sin terminar se ofrece **Avisarme**: con
+permiso del navegador, se envía una notificación cuando hay una decisión
+pendiente y cuando el cómic termina (Web Push, `push.mjs` y `public/sw.js`).
+Solo funciona en HTTPS (o `localhost`); en iPhone, únicamente si la web se ha
+añadido a la pantalla de inicio (iOS 16.4 o posterior). Las claves VAPID se crean
+la primera vez en `.data/push/vapid.json`: consérvalas al migrar o los avisos ya
+activados dejarán de llegar. `PUSH_SUBJECT` (una URL `https:` o `mailto:`)
+identifica al remitente ante los servicios de push; por defecto se usa
+`PUBLIC_BASE_URL` si es HTTPS.
+
+Puedes crear varias invitaciones y retomarlas desde **Invitar** («O sigue con una
+invitación anterior»). Si alguien envía varias fotos, eliges cuál usar; tras el
+primer cómic, los siguientes con esa invitación usan la misma. El estado se
+actualiza cada tres segundos. El enlace permite
 ver la foto del protagonista y enviar hasta 20 respuestas: compártelo solo con
 personas de confianza. **Quitar de mi lista** oculta la invitación en este
 navegador, pero no revoca el enlace.

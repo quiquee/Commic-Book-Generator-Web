@@ -1,49 +1,29 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import { Book } from './Book';
-import { DECISION_PAGES, TOTAL_PAGES, type Beat, type ComicFace, type Persona } from './types';
+import { TOTAL_PAGES, type ComicFace } from './types';
 import { errorMessage } from './invitations';
-import {
-    compressImage, deleteStory, fetchStory, fetchStoryDelta, loadStoryKeys, patchStory, saveFace, saveStoryKeys, submitChoice,
-    type StoryAuth, type StoryDocument
-} from './stories';
-import { faceId, faceType, findFace, isStoryFinished, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, upsertFace } from './storyLogic';
-import { apiErrorMessage, createAI, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError, type StoryContext } from './generation';
+import { fetchStory, fetchStoryDelta, restartGeneration, submitChoice, type StoryAuth, type StoryDocument } from './stories';
+import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
+import { NotifyPrompt } from './NotifyPrompt';
+import { localizeText, t } from './i18n';
 
 interface StoryViewProps {
     storyId: string;
     auth: StoryAuth;
     onExit: () => void;
-    onApiKeyError: () => void;
 }
-
-type GeneratorStatus =
-    | { kind: 'idle' }
-    | { kind: 'styling' }
-    | { kind: 'generating'; pageIndex: number }
-    | { kind: 'waiting' }
-    | { kind: 'finished' }
-    | { kind: 'stopped'; reason: string };
-
-const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Cancelado', 'AbortError')); }, { once: true });
-});
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
-export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewProps) {
+export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const [story, setStory] = useState<StoryDocument | null>(null);
     const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
-    const [status, setStatus] = useState<GeneratorStatus>({ kind: 'idle' });
-    const [confirmDelete, setConfirmDelete] = useState(false);
-    const [generatorRun, setGeneratorRun] = useState(0);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
-    const persistQueue = useRef<Promise<unknown>>(Promise.resolve());
 
     const isOwner = auth.kind === 'owner';
 
@@ -73,7 +53,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
     useEffect(() => {
         if (!story?.title) return;
         const previous = document.title;
-        document.title = `${story.title} · Héroes Infinitos`;
+        document.title = `${story.title} · Mundos Cruzados (beta)`;
         return () => { document.title = previous; };
     }, [story?.title]);
 
@@ -89,16 +69,17 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
                 updateStory(current => ({
                     ...current,
                     title: delta.title, tone: delta.tone, styleGuide: delta.styleGuide || current.styleGuide,
-                    completedPages: delta.completedPages, updatedAt: delta.updatedAt,
-                    faces: mergeFaces(current.faces, delta.faces, isOwner ? 'owner' : 'guest')
+                    completedPages: delta.completedPages, updatedAt: delta.updatedAt, generation: delta.generation,
+                    // The server draws every page, so all readers take its version of them.
+                    faces: mergeFaces(current.faces, delta.faces, 'guest')
                 }));
             } catch (failure) {
                 if (controller.signal.aborted) return;
                 if ((failure as { status?: number }).status === 404) {
-                    setError('Este cómic ya no existe. La protagonista lo ha borrado.');
+                    setError(t('view.deleted'));
                     return;
                 }
-                setNotice(`Sin conexión con el servidor: ${errorMessage(failure)}`);
+                setNotice(t('view.offline', { reason: errorMessage(failure) }));
             }
             if (!controller.signal.aborted) timer = setTimeout(tick, 3000);
         };
@@ -106,127 +87,22 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         return () => { controller.abort(); clearTimeout(timer); };
     }, [story?.id, storyId, auth, isOwner, updateStory]);
 
-    const persist = useCallback((face: ComicFace) => {
-        const attempt = async () => {
-            for (let retry = 0; ; retry++) {
-                try {
-                    const result = await saveFace(storyId, auth, face);
-                    versionRef.current = Math.max(versionRef.current, result.version);
-                    return;
-                } catch (failure) {
-                    if (retry >= 2) throw failure;
-                    await new Promise(resolve => setTimeout(resolve, 1500 * (retry + 1)));
-                }
-            }
-        };
-        const run = persistQueue.current.then(attempt);
-        persistQueue.current = run.catch(() => {});
-        return run;
-    }, [storyId, auth]);
-
+    // Comics are drawn on the server. The owner nudges it for comics it has not picked up yet
+    // (e.g. created before background generation existed); it is a no-op for one already in progress.
     useEffect(() => {
-        if (!story || !isOwner) return;
-        const controller = new AbortController();
-        const signal = controller.signal;
-        const context = (): StoryContext => {
-            const current = storyRef.current!;
-            return { hero: current.hero, friend: current.friend, hostName: current.hostName, guestName: current.guestName, settings: current.settings, tone: current.tone, styleGuide: current.styleGuide, title: current.title };
-        };
-        const ensureNotCancelled = () => { if (signal.aborted) throw new DOMException('Cancelado', 'AbortError'); };
+        if (!story || !isOwner || story.generation || isStoryFinished(story.faces)) return;
+        restartGeneration(storyId, auth).catch(() => { /* the status line shows what happens next */ });
+    }, [story?.id, isOwner, storyId, auth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        const toJpegPersona = async (persona: Persona): Promise<Persona> => {
-            const dataUrl = await compressImage(`data:image/png;base64,${persona.base64}`, 768, 0.85);
-            return { base64: dataUrl.split(',')[1], desc: persona.desc };
-        };
-
-        const generatePage = async (ai: ReturnType<typeof createAI>, pageIndex: number) => {
-            const id = faceId(pageIndex);
-            const type = faceType(pageIndex);
-            const isDecision = DECISION_PAGES.includes(pageIndex);
-            const existing = findFace(storyRef.current!.faces, pageIndex);
-            let face: ComicFace = { id, type, pageIndex, isLoading: true, isDecisionPage: isDecision, choices: [], resolvedChoice: existing?.resolvedChoice };
-            applyFace(face);
-            await persist(face);
-            ensureNotCancelled();
-
-            let beat: Beat = { scene: 'Thematic teaser image', choices: [], focus_char: 'other' };
-            if (type === 'story') {
-                beat = await generateBeat(ai, context(), storyRef.current!.faces, pageIndex, isDecision);
-                ensureNotCancelled();
-                if (beat.focus_char === 'friend' && !storyRef.current!.friend) {
-                    try {
-                        const name = storyRef.current!.guestName || (storyRef.current!.settings.genre === 'Custom' ? 'A fitting sidekick for this story' : `Sidekick for ${storyRef.current!.settings.genre} story.`);
-                        const persona = await toJpegPersona(await generatePersona(ai, context(), name));
-                        ensureNotCancelled();
-                        await patchStory(storyId, auth, { friend: persona });
-                        updateStory(current => ({ ...current, friend: persona }));
-                    } catch (failure) {
-                        if (isAbort(failure)) throw failure;
-                        beat.focus_char = 'other';
-                    }
-                }
-                face = { ...face, narrative: beat, choices: beat.choices };
-                applyFace(face);
-                await persist(face);
-                ensureNotCancelled();
-            }
-
-            const rawImage = await generateImage(ai, context(), beat, type, previousImage(storyRef.current!.faces, pageIndex), pageIndex);
-            ensureNotCancelled();
-            const imageUrl = await compressImage(rawImage);
-            face = { ...face, imageUrl, isLoading: false };
-            applyFace(face);
-            await persist(face);
-        };
-
-        (async () => {
-            const ai = createAI({ kind: 'story', storyId, token: auth.token });
-            let failures = 0;
-            while (!signal.aborted) {
-                try {
-                    if (!storyRef.current!.styleGuide) {
-                        setStatus({ kind: 'styling' });
-                        const styleGuide = await generateStyleGuide(ai, context());
-                        ensureNotCancelled();
-                        await patchStory(storyId, auth, { styleGuide });
-                        updateStory(current => ({ ...current, styleGuide }));
-                    }
-                    const next = nextPageToGenerate(storyRef.current!.faces);
-                    if (next === null) {
-                        if (isStoryFinished(storyRef.current!.faces)) { setStatus({ kind: 'finished' }); return; }
-                        setStatus({ kind: 'waiting' });
-                        await sleep(2000, signal);
-                        continue;
-                    }
-                    setStatus({ kind: 'generating', pageIndex: next });
-                    await generatePage(ai, next);
-                    failures = 0;
-                    setError('');
-                } catch (failure) {
-                    if (isAbort(failure) || signal.aborted) return;
-                    failures++;
-                    const fatal = fatalGenerationMessage(failure);
-                    if (fatal) {
-                        setStatus({ kind: 'stopped', reason: fatal });
-                        setError('');
-                        return;
-                    }
-                    if (isApiKeyError(failure)) {
-                        setStatus({ kind: 'stopped', reason: 'Se necesita una clave de API válida.' });
-                        onApiKeyError();
-                        return;
-                    }
-                    if (failures >= 5) {
-                        setStatus({ kind: 'stopped', reason: apiErrorMessage(failure) });
-                        return;
-                    }
-                    setError(`Error al generar: ${apiErrorMessage(failure)}. Reintentando (${failures}/5)...`);
-                    try { await sleep(3000 * failures, signal); } catch { return; }
-                }
-            }
-        })();
-        return () => controller.abort();
-    }, [story?.id, isOwner, generatorRun, storyId, auth, applyFace, persist, updateStory, onApiKeyError]);
+    const retry = async () => {
+        setError('');
+        try {
+            await restartGeneration(storyId, auth);
+            updateStory(current => ({ ...current, generation: { state: 'queued', at: Date.now() } }));
+        } catch (failure) {
+            setError(t('view.resumeFailed', { reason: errorMessage(failure) }));
+        }
+    };
 
     const choose = async (pageIndex: number, choice: string) => {
         const face = story && findFace(story.faces, pageIndex);
@@ -239,10 +115,10 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
             const resolved = (failure as { resolvedChoice?: string }).resolvedChoice;
             if (resolved) {
                 applyFace({ ...face, resolvedChoice: resolved });
-                setNotice(`Otra persona decidió antes: «${resolved}».`);
+                setNotice(t('view.decidedFirst', { choice: resolved }));
             } else {
                 applyFace(face);
-                setError(`No se pudo registrar la decisión: ${errorMessage(failure)}`);
+                setError(t('view.choiceFailed', { reason: errorMessage(failure) }));
             }
         }
     };
@@ -252,8 +128,8 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
         const pages = story.faces.filter(face => face.imageUrl && !face.isLoading).sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0));
         if (!pages.length) return;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [480, 720] });
-        const cast = story.guestName ? `${story.hostName} y ${story.guestName}` : story.hostName;
-        doc.setProperties({ title: story.title, subject: `Cómic de ${cast}`, author: story.hostName, creator: 'Héroes Infinitos' });
+        const cast = story.guestName ? t('pdf.castPair', { host: story.hostName, guest: story.guestName }) : story.hostName;
+        doc.setProperties({ title: story.title, subject: t('pdf.subject', { cast }), author: story.hostName, creator: 'Mundos Cruzados' });
         pages.forEach((face, index) => {
             if (index > 0) doc.addPage([480, 720], 'portrait');
             doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
@@ -263,7 +139,7 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
 
     const sharePage = async (face: ComicFace) => {
         if (!face.imageUrl || !story) return;
-        const label = face.type === 'cover' ? 'portada' : face.type === 'back_cover' ? 'contraportada' : `pagina-${face.pageIndex}`;
+        const label = face.type === 'cover' ? t('file.cover') : face.type === 'back_cover' ? t('file.backCover') : t('file.page', { page: face.pageIndex ?? '' });
         try {
             const blob = await (await fetch(face.imageUrl)).blob();
             const file = new File([blob], `${titleSlug(story.title)}-${label}.jpg`, { type: 'image/jpeg' });
@@ -277,19 +153,9 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
             link.download = file.name;
             link.click();
             URL.revokeObjectURL(link.href);
-            setNotice('Este navegador no permite compartir directamente; la página se ha descargado.');
+            setNotice(t('view.shareDownloaded'));
         } catch (failure) {
-            if (!isAbort(failure)) setError(`No se pudo compartir la página: ${errorMessage(failure)}`);
-        }
-    };
-
-    const remove = async () => {
-        try {
-            await deleteStory(storyId, auth);
-            saveStoryKeys(loadStoryKeys().filter(key => key.id !== storyId));
-            onExit();
-        } catch (failure) {
-            setError(`No se pudo borrar el cómic: ${errorMessage(failure)}`);
+            if (!isAbort(failure)) setError(t('view.shareFailed', { reason: errorMessage(failure) }));
         }
     };
 
@@ -302,39 +168,35 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
 
     const statusText = (() => {
         if (!story) return '';
-        if (!isOwner) {
-            const decision = pendingDecision(story.faces);
-            if (decision) return `Página ${decision.pageIndex}: ¡hay una decisión pendiente!`;
-            if (isStoryFinished(story.faces)) return 'Cómic completo';
-            return `${story.hostName} está dibujando... ${story.completedPages}/${TOTAL_PAGES + 1} páginas listas`;
-        }
-        switch (status.kind) {
-            case 'styling': return 'Definiendo el aspecto de los personajes...';
-            case 'generating': return status.pageIndex === 0 ? 'Dibujando la portada...' : status.pageIndex === TOTAL_PAGES ? 'Dibujando la contraportada...' : `Dibujando la página ${status.pageIndex} de ${TOTAL_PAGES - 1}...`;
-            case 'waiting': return 'Esperando una decisión para continuar la historia';
-            case 'finished': return 'Cómic completo';
-            case 'stopped': return `Generación detenida: ${status.reason}`;
-            default: return 'Cargando...';
+        const decision = pendingDecision(story.faces);
+        if (decision) return t('status.decision', { page: decision.pageIndex ?? '' });
+        if (isStoryFinished(story.faces)) return t('status.finished');
+        const generation = story.generation;
+        switch (generation?.state) {
+            case 'styling': return t('status.styling');
+            case 'generating': return generation.pageIndex === 0 ? t('status.cover')
+                : generation.pageIndex === TOTAL_PAGES ? t('status.backCover')
+                : t('status.page', { page: generation.pageIndex ?? '', total: TOTAL_PAGES - 1 });
+            case 'retrying': return t('status.retrying', { attempt: generation.attempt ?? 1 });
+            case 'stopped': return t('status.stopped', { reason: localizeText(generation.reason ?? '') });
+            default: return t('status.queued', { done: story.completedPages, total: TOTAL_PAGES + 1 });
         }
     })();
+    const inProgress = !!story && !isStoryFinished(story.faces) && story.generation?.state !== 'stopped';
 
     const hasPages = !!story?.faces.some(face => face.imageUrl);
 
     return (
         <>
             <div className="fixed top-2 right-2 z-[500] flex flex-wrap justify-end gap-2 max-w-[70vw]">
-                <button type="button" onClick={downloadPDF} disabled={!hasPages} className="comic-btn bg-blue-500 text-white px-3 py-2 text-lg disabled:bg-gray-400">Descargar PDF</button>
-                {isOwner && !confirmDelete && <button type="button" onClick={() => setConfirmDelete(true)} className="comic-btn bg-red-600 text-white px-3 py-2 text-lg">Borrar cómic</button>}
-                {isOwner && confirmDelete && <>
-                    <button type="button" onClick={remove} className="comic-btn bg-red-700 text-white px-3 py-2 text-lg">Confirmar borrado</button>
-                    <button type="button" onClick={() => setConfirmDelete(false)} className="comic-btn bg-gray-200 px-3 py-2 text-lg">Cancelar</button>
-                </>}
-                {isOwner && status.kind === 'stopped' && <button type="button" onClick={() => { setError(''); setGeneratorRun(run => run + 1); }} className="comic-btn bg-yellow-400 px-3 py-2 text-lg">Reintentar</button>}
+                <button type="button" onClick={downloadPDF} disabled={!hasPages} className="comic-btn bg-blue-500 text-white px-3 py-2 text-lg disabled:bg-gray-400">{t('view.downloadPdf')}</button>
+                {isOwner && story?.generation?.state === 'stopped' && <button type="button" onClick={retry} className="comic-btn bg-yellow-400 px-3 py-2 text-lg">{t('view.retry')}</button>}
             </div>
             <div className="fixed top-16 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
                 {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
-                {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>Cerrar</button></p>}
-                {error && <p role="alert" className="pointer-events-auto text-sm bg-white border-2 border-red-800 text-red-800 px-3 py-1">{error} <button type="button" className="underline ml-1" onClick={() => setError('')}>Cerrar</button></p>}
+                {inProgress && !pendingDecision(story!.faces) && <p className="text-xs text-white bg-black/60 px-2 py-0.5">{t('view.canClose')}</p>}
+                {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
+                {error && <p role="alert" className="pointer-events-auto text-sm bg-white border-2 border-red-800 text-red-800 px-3 py-1">{error} <button type="button" className="underline ml-1" onClick={() => setError('')}>{t('common.close')}</button></p>}
             </div>
             {story && <Book
                 comicFaces={story.faces}
@@ -348,7 +210,8 @@ export function StoryView({ storyId, auth, onExit, onApiKeyError }: StoryViewPro
                 onReset={onExit}
                 onShare={sharePage}
             />}
-            {!story && !error && <p role="status" className="font-comic text-3xl text-white">Cargando cómic...</p>}
+            {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
+            {story && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
         </>
     );
 }

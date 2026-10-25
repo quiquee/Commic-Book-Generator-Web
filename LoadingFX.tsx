@@ -4,8 +4,10 @@
 */
 
 import React, { useState, useEffect } from 'react';
+import { t } from './i18n';
 
-const LOADING_FX = ["¡PUM!", "¡ZAS!", "¡BAM!", "¡CRAC!", "¡CATAPLÚM!", "¡FUUUSH!", "¡ZAP!", "¡BOOM!"];
+// Onomatopoeias change with the language; the catalog keeps them in one '|'-separated string.
+const LOADING_FX = t('fx.sounds').split('|');
 
 export const LoadingFX: React.FC = () => {
     const [particles, setParticles] = useState<{id: number, text: string, x: string, y: string, rot: number, color: string}[]>([]);
@@ -42,7 +44,7 @@ export const LoadingFX: React.FC = () => {
                     {p.text}
                 </div>
             ))}
-            <p className="absolute bottom-24 inset-x-0 text-center font-comic text-xl text-gray-400 animate-pulse z-0 tracking-widest">DIBUJANDO LA PÁGINA...</p>
+            <p className="absolute bottom-24 inset-x-0 text-center font-comic text-xl text-gray-400 animate-pulse z-0 tracking-widest">{t('fx.drawing')}</p>
         </div>
     );
 };

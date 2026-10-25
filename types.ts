@@ -21,12 +21,13 @@ export const TONES = [
     "WHOLESOME (Warm, gentle, optimistic.)"
 ];
 
+// Labels are each language's own name, so they read the same whatever the interface language.
 export const LANGUAGES = [
     { code: 'es-ES', name: 'Spanish (Spain)', label: 'Español' },
-    { code: 'en-US', name: 'English (US)', label: 'Inglés' },
-    { code: 'fr-FR', name: 'French (France)', label: 'Francés' },
-    { code: 'gl-ES', name: 'Galician (Spain)', label: 'Gallego' },
-    { code: 'de-DE', name: 'German (Germany)', label: 'Alemán' }
+    { code: 'en-US', name: 'English (US)', label: 'English' },
+    { code: 'fr-FR', name: 'French (France)', label: 'Français' },
+    { code: 'gl-ES', name: 'Galician (Spain)', label: 'Galego' },
+    { code: 'de-DE', name: 'German (Germany)', label: 'Deutsch' }
 ];
 
 export interface ComicFace {

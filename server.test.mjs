@@ -28,7 +28,7 @@ let baseUrl;
 async function startServer(options = {}) {
   server = createAppServer({
     dataDir, storiesDir, usageDir: join(dataDir, 'usage'),
-    auditFile: join(dataDir, 'audit.log'), ...options,
+    auditFile: join(dataDir, 'audit.log'), backgroundGeneration: false, ...options,
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -60,6 +60,17 @@ async function api(path, { method = 'GET', token, body, headers = {} } = {}) {
 
 async function createInvitation(body = invitationBody) {
   return api('/api/invitations', { method: 'POST', body });
+}
+
+// Creates an invitation the guest has already answered, as needed to start a shared comic.
+async function createJoinedInvitation() {
+  const invitation = await createInvitation();
+  const joined = await api(`/api/invitations/${invitation.payload.id}/responses`, {
+    method: 'POST',
+    token: invitation.payload.guestToken,
+    body: { persona: { base64: JPEG, desc: 'Compañero' } },
+  });
+  return { ...invitation, responseId: joined.payload.id };
 }
 
 const storyBody = (invitation = null) => ({
@@ -293,12 +304,55 @@ test('limits the number of responses and keeps unselected responses pending', as
   assert.equal(secondAcceptance.response.status, 409);
 });
 
-test('supports linked stories, participant choices, incremental reads, persistence and deletion', async () => {
+test('a shared comic cannot start until the guest joins, and starting it accepts their response', async () => {
   const invitation = await createInvitation();
+  const invitationPath = `/api/invitations/${invitation.payload.id}`;
+  const linked = { id: invitation.payload.id, ownerToken: invitation.payload.ownerToken };
+  const early = await api('/api/stories', { method: 'POST', body: storyBody(linked) });
+  assert.equal(early.response.status, 409);
+  assert.match(early.payload.error, /Luis todavía no se ha unido/);
+
+  const joined = await api(`${invitationPath}/responses`, {
+    method: 'POST',
+    token: invitation.payload.guestToken,
+    body: { persona: { base64: JPEG, desc: 'Compañero' } },
+  });
+  const unknown = await api('/api/stories', {
+    method: 'POST', body: storyBody({ ...linked, responseId: randomUUID() }),
+  });
+  assert.equal(unknown.response.status, 404);
+
+  const created = await api('/api/stories', {
+    method: 'POST',
+    body: {
+      ...storyBody({ ...linked, responseId: joined.payload.id }),
+      guestName: 'Otro nombre',
+      settings: { ...invitationBody.settings, genre: 'Dark Sci-Fi' },
+    },
+  });
+  assert.equal(created.response.status, 201);
+  const story = await api(`/api/stories/${created.payload.id}`, { token: created.payload.ownerToken });
+  assert.deepEqual(story.payload.friend, { base64: JPEG, desc: 'Luis' });
+  assert.equal(story.payload.guestName, 'Luis');
+  assert.equal(story.payload.settings.genre, 'Classic Horror');
+  const status = await api(`${invitationPath}/responses/${joined.payload.id}`, {
+    token: invitation.payload.guestToken,
+  });
+  assert.equal(status.payload.status, 'accepted');
+
+  // Later comics with the same guest reuse the accepted response.
+  const again = await api('/api/stories', { method: 'POST', body: storyBody(linked) });
+  assert.equal(again.response.status, 201);
+});
+
+test('supports linked stories, participant choices, incremental reads, persistence and deletion', async () => {
+  const invitation = await createJoinedInvitation();
   const invitationPath = `/api/invitations/${invitation.payload.id}`;
   const created = await api('/api/stories', {
     method: 'POST',
-    body: storyBody({ id: invitation.payload.id, ownerToken: invitation.payload.ownerToken }),
+    body: storyBody({
+      id: invitation.payload.id, ownerToken: invitation.payload.ownerToken, responseId: invitation.responseId,
+    }),
   });
   assert.equal(created.response.status, 201);
   assert.equal(typeof created.payload.ownerToken, 'string');
@@ -319,8 +373,11 @@ test('supports linked stories, participant choices, incremental reads, persisten
   const initial = await api(storyPath, { token: invitation.payload.guestToken });
   assert.equal(initial.payload.role, 'guest');
   assert.equal(initial.payload.ownerToken, undefined);
+  assert.equal('invitationId' in initial.payload, false);
+  const ownerRead = await api(storyPath, { token: created.payload.ownerToken });
+  assert.equal(ownerRead.payload.invitationId, invitation.payload.id);
   assert.equal(initial.payload.hero.base64, JPEG);
-  assert.equal(initial.payload.friend, null);
+  assert.deepEqual(initial.payload.friend, { base64: JPEG, desc: 'Luis' });
 
   const updated = await api(storyPath, {
     method: 'PATCH',
@@ -528,10 +585,14 @@ test('wires proxy drafts into stories and retains owner/admin deletion accountin
     headers: { 'X-Draft-Id': draftId, 'X-Usage-Op': 'title', 'X-Goog-Api-Key': 'proxy' },
   });
   assert.equal(draft.response.status, 200);
-  const invitation = (await createInvitation()).payload;
+  const joined = await createJoinedInvitation();
+  const invitation = joined.payload;
   const story = (await api('/api/stories', {
     method: 'POST',
-    body: { ...storyBody({ id: invitation.id, ownerToken: invitation.ownerToken }), draftId },
+    body: {
+      ...storyBody({ id: invitation.id, ownerToken: invitation.ownerToken, responseId: joined.responseId }),
+      draftId,
+    },
   })).payload;
   assert.ok(story.id);
   const accounted = JSON.parse(await readFile(join(dataDir, 'usage', `${story.id}.json`), 'utf8'));

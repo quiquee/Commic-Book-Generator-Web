@@ -1,5 +1,6 @@
 import type { Persona } from './types.ts';
 import { toJpegDataUrl } from './images.ts';
+import { localizeText, t } from './i18n.ts';
 
 export interface StorySettings {
     genre: string;
@@ -49,15 +50,15 @@ export function getJoinCredentials(): JoinCredentials | null {
 }
 
 export function normalizeBaseUrl(value: string): string {
-    if (value.trim().length > 2000) throw new Error('La URL base no puede superar los 2000 caracteres.');
+    if (value.trim().length > 2000) throw new Error(t('error.baseUrlLong'));
     let url: URL;
     try {
         url = new URL(value.trim());
     } catch {
-        throw new Error('Introduce una URL base válida, por ejemplo https://comics.example.com.');
+        throw new Error(t('error.baseUrl'));
     }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-        throw new Error('La URL debe usar http o https y no puede incluir credenciales.');
+        throw new Error(t('error.baseUrlScheme'));
     }
     url.search = '';
     url.hash = '';
@@ -95,6 +96,32 @@ export function invitationUrl(baseUrl: string, keys: InvitationKeys): string {
     return `${normalizeBaseUrl(baseUrl)}/#${new URLSearchParams({ join: keys.id, token: keys.guestToken })}`;
 }
 
+// The response a new comic would use: the accepted one, or else the chosen (default: latest) pending one.
+export function pickResponse(invitation: Invitation, chosenId: string | null): InvitationResponse | null {
+    return invitation.responses.find(item => item.status === 'accepted')
+        ?? invitation.responses.find(item => item.id === chosenId)
+        ?? invitation.responses[invitation.responses.length - 1]
+        ?? null;
+}
+
+// The Clipboard API only exists on HTTPS or localhost; plain-HTTP hosts (e.g. on a LAN) need the legacy path.
+export async function copyText(text: string): Promise<void> {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    if (!copied) throw new Error(t('error.copyLink'));
+}
+
 export async function invitationRequest<T>(
     path: string,
     token?: string,
@@ -111,24 +138,25 @@ export async function invitationRequest<T>(
         signal
     });
     if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error('El servidor de invitaciones no está disponible. Arranca la aplicación con npm run dev o npm start.');
+        throw new Error(t('error.invitationServer'));
     }
     const result = await response.json();
     if (!response.ok) {
-        throw new Error(typeof result.error === 'string' ? result.error : 'No se pudo completar la petición.');
+        throw new Error(typeof result.error === 'string' ? result.error : t('error.requestFailed'));
     }
     return result as T;
 }
 
 export function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : 'Se ha producido un error inesperado.';
+    // Server messages arrive in Spanish; show them in the reader's language.
+    return error instanceof Error ? localizeText(error.message) : t('error.unexpected');
 }
 
 export async function photoFromFile(file: File): Promise<Persona> {
     if (!file.type.startsWith('image/') || file.size > 20 * 1024 * 1024) {
-        throw new Error('Selecciona una imagen de hasta 20 MB.');
+        throw new Error(t('error.imageTooLargeFile'));
     }
     const base64 = (await toJpegDataUrl(file, 1024, 0.8)).split(',')[1];
-    if (base64.length > 1_398_104) throw new Error('La imagen es demasiado grande. Selecciona otra foto.');
+    if (base64.length > 1_398_104) throw new Error(t('error.imageTooLarge'));
     return { base64, desc: 'User provided character' };
 }

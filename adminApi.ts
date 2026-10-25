@@ -1,3 +1,5 @@
+import { intlLocale, localizeText, t } from './i18n';
+
 export interface TokenCounts {
     inputText: number;
     inputImage: number;
@@ -113,7 +115,7 @@ export interface AdminOverview {
 }
 
 export class AdminAuthError extends Error {
-    constructor(message = 'Sesión no iniciada o caducada.') {
+    constructor(message = t('admin.sessionExpired')) {
         super(message);
     }
 }
@@ -138,17 +140,17 @@ export async function adminRequest<T>(
     const result = isJson ? await response.json() : null;
     if (response.status === 401 && path !== '/login') throw new AdminAuthError();
     if (!response.ok) {
-        throw new Error(typeof result?.error === 'string' ? result.error : `Error ${response.status} del servidor.`);
+        throw new Error(typeof result?.error === 'string' ? result.error : t('admin.serverError', { status: response.status }));
     }
     return result as T;
 }
 
 export function errorText(error: unknown): string {
-    return error instanceof Error ? error.message : 'Se ha producido un error inesperado.';
+    return error instanceof Error ? localizeText(error.message) : t('error.unexpected');
 }
 
-const dateFormat = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
-const numberFormat = new Intl.NumberFormat('es-ES');
+const dateFormat = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'medium', timeStyle: 'short' });
+const numberFormat = new Intl.NumberFormat(intlLocale);
 
 export const formatDate = (timestamp: number | null | undefined) =>
     typeof timestamp === 'number' && Number.isFinite(timestamp) ? dateFormat.format(new Date(timestamp)) : '—';
@@ -156,18 +158,16 @@ export const formatNumber = (value: number) => numberFormat.format(Math.round(va
 
 export function formatCost(totals: { costUsd: number; uncostedCalls: number }): string {
     if (totals.uncostedCalls > 0 && totals.costUsd === 0) return 'sin tarifa';
-    const amount = `${totals.costUsd.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} US$`;
-    return totals.uncostedCalls > 0 ? `${amount} + ${totals.uncostedCalls} sin tarifa` : amount;
+    const amount = `${totals.costUsd.toLocaleString(intlLocale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} US$`;
+    return totals.uncostedCalls > 0 ? t('admin.costPlusUncosted', { amount, count: totals.uncostedCalls }) : amount;
 }
 
 export function formatUsd(value: number | null): string {
-    return value === null ? '—' : `${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} US$`;
+    return value === null ? '—' : `${value.toLocaleString(intlLocale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} US$`;
 }
 
-export const statusLabel: Record<StoryStatus, string> = {
-    in_progress: 'En curso',
-    complete: 'Completo',
-    deleted: 'Borrado'
-};
+export const statusLabel = (status: StoryStatus) => t(({
+    in_progress: 'admin.status.inProgress', complete: 'admin.status.complete', deleted: 'admin.status.deleted'
+} as const)[status]);
 
 export const imageUrl = (storyId: string, which: string) => `/api/admin/stories/${storyId}/image/${which}`;

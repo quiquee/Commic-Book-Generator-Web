@@ -2,11 +2,18 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createUsageStore } from './usage.mjs';
 import { createGeminiProxy } from './geminiProxy.mjs';
 import { createAdminHandler } from './admin.mjs';
+import { GoogleGenAI } from '@google/genai';
+import { createStoryWorker } from './storyWorker.mjs';
+import { createPushService, validateSubscription } from './push.mjs';
+import { nextPageToGenerate } from './storyLogic.ts';
+import { translateServerText } from './locales/serverText.ts';
+
+const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FACE_BODY_BYTES = 4 * 1024 * 1024;
@@ -143,11 +150,16 @@ function validateStoryCreate(body) {
   }
   let invitation = null;
   if (body.invitation !== null) {
-    if (!exactKeys(body.invitation, ['id', 'ownerToken']) || typeof body.invitation.id !== 'string'
-      || typeof body.invitation.ownerToken !== 'string') {
+    const keys = isObject(body.invitation) ? Object.keys(body.invitation) : [];
+    if (!isObject(body.invitation) || typeof body.invitation.id !== 'string'
+      || typeof body.invitation.ownerToken !== 'string'
+      || keys.some((key) => !['id', 'ownerToken', 'responseId'].includes(key))
+      || (Object.hasOwn(body.invitation, 'responseId') && typeof body.invitation.responseId !== 'string')) {
       fail(400, 'La invitación vinculada no es válida.');
     }
-    invitation = { id: body.invitation.id, ownerToken: body.invitation.ownerToken };
+    invitation = {
+      id: body.invitation.id, ownerToken: body.invitation.ownerToken, responseId: body.invitation.responseId ?? null,
+    };
   }
   return {
     title: validateString(body.title, 'title', 120),
@@ -399,6 +411,13 @@ export function createAppServer({
   trustProxy = false,
   auditFile = join(process.cwd(), '.data', 'audit.log'),
   upstreamTimeoutMs = 120000,
+  // Comics are generated on the server (see storyWorker.mjs); off by default when there is no API key.
+  backgroundGeneration,
+  generationConcurrency = 2,
+  generationRetryDelayMs = 3000,
+  pushDir,
+  pushSubject,
+  pushService,
 } = {}) {
   const configuredBaseUrl = parsePublicBaseUrl(publicBaseUrl);
   const storageDir = resolve(dataDir);
@@ -561,6 +580,83 @@ export function createAppServer({
     await rm(storyFilePath(id));
   }
 
+  // Atomic read-modify-write used by the background generator; bumps the version before mutate runs.
+  async function updateStoryRecord(id, mutate) {
+    return serialize(async () => {
+      let story;
+      try {
+        story = await loadStory(id);
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 404) return null;
+        throw error;
+      }
+      story.version += 1;
+      mutate(story);
+      story.updatedAt = Date.now();
+      await saveStory(story);
+      return story;
+    });
+  }
+
+  const push = pushService ?? createPushService({
+    dir: pushDir ?? join(dirname(storageDir), 'push'),
+    subject: pushSubject || (configuredBaseUrl?.startsWith('https:') ? configuredBaseUrl : 'https://mundoscruzados.com'),
+  });
+
+  const pushMessages = {
+    decision: '¡Hay una decisión pendiente! Entra para elegir cómo sigue la historia.',
+    finished: '¡Tu cómic está terminado! Toca para leerlo.',
+  };
+
+  // Sends to everyone who asked for notices on this comic and forgets subscriptions the browser revoked.
+  async function notifySubscribers(story, event) {
+    const subscriptions = Array.isArray(story.subscriptions) ? story.subscriptions : [];
+    if (!subscriptions.length) return;
+    const results = await Promise.all(subscriptions.map((entry) => push.send(entry.subscription, {
+      title: story.title, body: translateServerText(pushMessages[event], entry.lang ?? 'es'), url: entry.url, tag: `${story.id}:${event}`,
+    })));
+    const gone = new Set(subscriptions.filter((_, index) => results[index] === 'gone').map((entry) => entry.subscription.endpoint));
+    if (gone.size) {
+      await updateStoryRecord(story.id, (record) => {
+        record.subscriptions = (record.subscriptions ?? []).filter((entry) => !gone.has(entry.subscription.endpoint));
+      });
+    }
+  }
+
+  // The generator calls this same server's Gemini proxy with the comic's owner key, so usage
+  // accounting, rate limits and the daily budget apply exactly as they did for browser generation.
+  function loopbackOrigin() {
+    const address = server.address();
+    const host = !address.address || ['0.0.0.0', '::'].includes(address.address) ? '127.0.0.1'
+      : address.family === 'IPv6' ? `[${address.address}]` : address.address;
+    return `http://${host}:${address.port}`;
+  }
+
+  const worker = (backgroundGeneration ?? Boolean(geminiApiKey)) ? createStoryWorker({
+    getStory: getStoryOrNull,
+    updateStory: updateStoryRecord,
+    aiFor: (story) => new GoogleGenAI({
+      apiKey: 'proxy',
+      httpOptions: {
+        baseUrl: `${loopbackOrigin()}/api/gemini`, apiVersion: 'v1beta',
+        headers: { 'X-Story-Id': story.id, 'X-Story-Token': story.ownerToken },
+      },
+    }),
+    notify: notifySubscribers,
+    concurrency: generationConcurrency,
+    retryDelayMs: generationRetryDelayMs,
+  }) : null;
+
+  // On startup, picks up every unfinished comic that is not waiting for a decision or stopped by an error
+  // (including pages left half-done by the old in-browser generator).
+  async function resumePendingStories() {
+    if (!worker) return;
+    for (const story of await listActiveStories()) {
+      if (story.generation?.state === 'stopped') continue;
+      if (nextPageToGenerate(story.faces) !== null || !story.styleGuide) worker.start(story.id);
+    }
+  }
+
   const geminiProxy = createGeminiProxy({
     usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
     allowedModels: typeof allowedModels === 'string' ? allowedModels.split(',').map((model) => model.trim()).filter(Boolean) : allowedModels,
@@ -569,6 +665,7 @@ export function createAppServer({
 
   const admin = createAdminHandler({
     adminPassword, trustProxy, auditFile, usage, listActiveStories, getStory: getStoryOrNull,
+    resumeStory: (id) => worker?.start(id),
     deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
     dailyBudgetUsd, dailyTokenLimit, dev,
     serveAdminPage: async (request, response) => {
@@ -665,17 +762,33 @@ export function createAppServer({
           }
         }
 
+        // A shared comic cannot start until the guest has joined: starting it accepts their response,
+        // and the co-star, names and settings always come from the invitation they saw.
+        let costar = null;
+        if (invitation) {
+          costar = invitation.responses.find((item) => item.status === 'accepted') ?? null;
+          if (costar && body.invitation.responseId && costar.id !== body.invitation.responseId) {
+            fail(409, 'Ya se ha aceptado otra respuesta para esta invitación.');
+          }
+          if (!costar && body.invitation.responseId) {
+            costar = invitation.responses.find((item) => item.id === body.invitation.responseId) ?? null;
+            if (!costar) fail(404, 'No se encontró la respuesta.');
+            costar.status = 'accepted';
+          }
+          if (!costar) fail(409, `${invitation.guestName} todavía no se ha unido a la invitación.`);
+        }
+
         const now = Date.now();
         const story = {
           id: randomUUID(),
           ownerToken: randomBytes(32).toString('base64url'),
           invitationId: invitation?.id ?? null,
           title: body.title,
-          hostName: body.hostName,
-          guestName: body.guestName,
+          hostName: invitation?.hostName ?? body.hostName,
+          guestName: invitation?.guestName ?? body.guestName,
           hero: body.hero,
-          friend: body.friend,
-          settings: body.settings,
+          friend: costar ? { base64: costar.persona.base64, desc: costar.name } : body.friend,
+          settings: invitation?.settings ?? body.settings,
           tone: body.tone,
           styleGuide: '',
           faces: [],
@@ -697,6 +810,7 @@ export function createAppServer({
         if (body.draftId) await usage.adoptDraft(body.draftId, story.id);
         return story;
       });
+      worker?.start(created.id);
       sendJson(response, 201, { id: created.id, ownerToken: created.ownerToken });
       return;
     }
@@ -737,6 +851,9 @@ export function createAppServer({
           totalPages: 12,
           completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
           role,
+          generation: story.generation ?? null,
+          // Lets the owner redo the comic with the same invited co-star.
+          ...(role === 'owner' ? { invitationId: story.invitationId ?? null } : {}),
           faces: hasAfter ? story.faces.filter((face) => face.version > after) : story.faces,
           ...(!hasAfter ? { hero: story.hero, friend: story.friend } : {}),
         };
@@ -832,8 +949,50 @@ export function createAppServer({
       if (result.conflict) {
         sendJson(response, 409, { error: 'Esta página ya tiene una opción resuelta.', resolvedChoice: result.resolvedChoice });
       } else {
+        worker?.start(id);
         sendJson(response, 200, result);
       }
+      return;
+    }
+
+    // (Re)starts background generation, e.g. after it stopped on an error. Owner only.
+    if (segments.length === 4 && segments[3] === 'generate' && request.method === 'POST') {
+      await readJsonBody(request).catch(() => null);
+      if (!worker) fail(503, 'La generación de cómics no está disponible en este momento.');
+      await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (await participantRole(request, story) !== 'owner') fail(403, 'Solo quien creó la historia puede reanudarla.');
+      });
+      if (!worker.isActive(id)) {
+        await updateStoryRecord(id, (story) => {
+          if (story.generation?.state === 'stopped') story.generation = { state: 'queued', at: Date.now() };
+        });
+      }
+      worker.start(id);
+      sendJson(response, 202, { started: true });
+      return;
+    }
+
+    // Saves a browser push subscription so the owner or guest is told about decisions and the end.
+    if (segments.length === 4 && segments[3] === 'subscriptions' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      const subscription = isObject(body) ? validateSubscription(body.subscription) : null;
+      if (!subscription || typeof body.url !== 'string' || !/^\/(?:index\.html)?#[A-Za-z0-9=&_.-]{1,600}$/.test(body.url)) {
+        fail(400, 'La suscripción no es válida.');
+      }
+      // Notifications are written in the subscriber's interface language.
+      const lang = PUSH_LANGUAGES.has(body.lang) ? body.lang : 'es';
+      await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        await participantRole(request, story);
+        const others = (Array.isArray(story.subscriptions) ? story.subscriptions : [])
+          .filter((entry) => entry.subscription.endpoint !== subscription.endpoint);
+        story.subscriptions = [...others, { subscription, url: body.url, lang }].slice(-10);
+        await saveStory(story);
+      });
+      sendJson(response, 201, { subscribed: true });
       return;
     }
 
@@ -861,6 +1020,11 @@ export function createAppServer({
     if (segments.length === 2 && segments[0] === 'api' && segments[1] === 'config') {
       if (request.method !== 'GET') fail(405, 'Método no permitido.');
       sendJson(response, 200, { baseUrl: configuredBaseUrl, geminiProxy: Boolean(geminiApiKey) });
+      return;
+    }
+    if (segments.length === 3 && segments[0] === 'api' && segments[1] === 'push' && segments[2] === 'key') {
+      if (request.method !== 'GET') fail(405, 'Método no permitido.');
+      sendJson(response, 200, { publicKey: await push.publicKey() });
       return;
     }
     if (segments[0] === 'api' && segments[1] === 'stories') {
@@ -996,6 +1160,8 @@ export function createAppServer({
     if (!vitePromise) {
       vitePromise = import('vite').then(({ createServer: createViteServer }) => createViteServer({
         configFile: join(process.cwd(), 'vite.config.ts'),
+        // The default loader writes and deletes a temporary file, which `node --watch` takes as a change.
+        configLoader: 'runner',
         server: { middlewareMode: true },
         appType: 'spa',
       }));
@@ -1049,7 +1215,11 @@ export function createAppServer({
     }
   });
 
+  server.on('listening', () => {
+    resumePendingStories().catch((error) => console.error('No se pudieron reanudar los cómics pendientes:', error));
+  });
   server.on('close', () => {
+    worker?.stop();
     if (vitePromise) vitePromise.then((vite) => vite.close()).catch((error) => {
       console.error('No se pudo cerrar Vite:', error);
     });
@@ -1072,8 +1242,26 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (error.code !== 'ENOENT') throw error;
   }
   const dev = process.argv.includes('--dev');
-  const port = Number.parseInt(process.env.PORT ?? '3000', 10);
-  const host = process.env.HOST ?? '0.0.0.0';
+  // Vite runs as middleware, so it never listens on server.port itself; reuse its settings here.
+  // Production installs may omit Vite (a devDependency), in which case only PORT/HOST apply.
+  let viteServerConfig = {};
+  try {
+    const { loadConfigFromFile } = await import('vite');
+    const loaded = await loadConfigFromFile(
+      { command: 'serve', mode: dev ? 'development' : 'production' },
+      join(process.cwd(), 'vite.config.ts'),
+      process.cwd(),
+      'silent',
+      undefined,
+      'runner', // no temporary file, so `npm run dev` (node --watch) does not restart in a loop
+    );
+    viteServerConfig = loaded?.config.server ?? {};
+  } catch (error) {
+    if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+  }
+  const port = Number.parseInt(process.env.PORT ?? String(viteServerConfig.port ?? 3000), 10);
+  const host = process.env.HOST
+    ?? (typeof viteServerConfig.host === 'string' ? viteServerConfig.host : '0.0.0.0');
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     console.error('PORT debe ser un puerto válido entre 0 y 65535.');
     process.exitCode = 1;
@@ -1089,6 +1277,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         dailyTokenLimit: Number(process.env.GEMINI_DAILY_TOKEN_LIMIT ?? 0),
         adminPassword: process.env.ADMIN_PASSWORD,
         trustProxy: process.env.TRUST_PROXY === '1',
+        pushSubject: process.env.PUSH_SUBJECT,
       });
     } catch (error) {
       console.error(error.message);
@@ -1097,6 +1286,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     server.listen(port, host, () => {
       const address = server.address();
       console.log(`Servidor escuchando en http://${host}:${address.port}${dev ? ' (desarrollo)' : ''}`);
+      // Users only see a generic "not available" message, so name the missing setting here.
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn('Aviso: GEMINI_API_KEY no está definida; no se podrán generar títulos ni cómics. Defínela en .env.local y reinicia el servidor.');
+      }
     });
   }
 }

@@ -1,0 +1,124 @@
+// The server, the proxy and the shared generation code report messages in Spanish (tests and logs rely on
+// that). This catalog shows them in the reader's language: browsers translate what they display, and the
+// server uses it for push notifications. Unknown texts are returned unchanged.
+
+type Target = 'en' | 'fr' | 'de' | 'gl';
+type Translations = Record<Target, string>;
+
+const EXACT: Record<string, Translations> = {
+    'Acceso reservado al propietario.': { en: 'Only the owner can do this.', fr: 'Réservé au propriétaire.', de: 'Nur für den Besitzer.', gl: 'Acceso reservado ao propietario.' },
+    'Contraseña incorrecta.': { en: 'Wrong password.', fr: 'Mot de passe incorrect.', de: 'Falsches Passwort.', gl: 'Contrasinal incorrecto.' },
+    'Credenciales no válidas.': { en: 'Invalid credentials.', fr: 'Identifiants non valides.', de: 'Ungültige Zugangsdaten.', gl: 'Credenciais non válidas.' },
+    'Demasiados intentos. Inténtalo más tarde.': { en: 'Too many attempts. Try again later.', fr: 'Trop de tentatives. Réessaie plus tard.', de: 'Zu viele Versuche. Versuche es später erneut.', gl: 'Demasiados intentos. Téntao máis tarde.' },
+    'El JSON de la solicitud no es válido.': { en: 'The request JSON is not valid.', fr: 'Le JSON de la requête n’est pas valide.', de: 'Das JSON der Anfrage ist ungültig.', gl: 'O JSON da solicitude non é válido.' },
+    'El campo premise es obligatorio para el género Custom.': { en: 'Write what your story is about.', fr: 'Écris de quoi parle ton histoire.', de: 'Schreib, worum es in deiner Geschichte geht.', gl: 'Escribe de que vai a túa historia.' },
+    'El campo styleGuide no es válido.': { en: 'The character guide is not valid.', fr: 'Le guide des personnages n’est pas valide.', de: 'Der Figurenleitfaden ist ungültig.', gl: 'A guía de personaxes non é válida.' },
+    'El contenido debe ser JSON.': { en: 'The content must be JSON.', fr: 'Le contenu doit être du JSON.', de: 'Der Inhalt muss JSON sein.', gl: 'O contido debe ser JSON.' },
+    'El cuerpo JSON no es válido.': { en: 'The JSON body is not valid.', fr: 'Le corps JSON n’est pas valide.', de: 'Der JSON-Inhalt ist ungültig.', gl: 'O corpo JSON non é válido.' },
+    'El cuerpo de la historia no es válido.': { en: 'The comic data is not valid.', fr: 'Les données de la BD ne sont pas valides.', de: 'Die Comic-Daten sind ungültig.', gl: 'Os datos do cómic non son válidos.' },
+    'El cuerpo de la invitación no es válido.': { en: 'The invitation data is not valid.', fr: 'Les données de l’invitation ne sont pas valides.', de: 'Die Einladungsdaten sind ungültig.', gl: 'Os datos do convite non son válidos.' },
+    'El cuerpo de la respuesta no es válido.': { en: 'The reply data is not valid.', fr: 'Les données de la réponse ne sont pas valides.', de: 'Die Antwortdaten sind ungültig.', gl: 'Os datos da resposta non son válidos.' },
+    'El cuerpo de la solicitud es demasiado grande.': { en: 'The request is too large.', fr: 'La requête est trop volumineuse.', de: 'Die Anfrage ist zu groß.', gl: 'A solicitude é demasiado grande.' },
+    'El cuerpo de la solicitud supera el límite permitido.': { en: 'The request exceeds the allowed size.', fr: 'La requête dépasse la taille autorisée.', de: 'Die Anfrage überschreitet die erlaubte Größe.', gl: 'A solicitude supera o límite permitido.' },
+    'El cuerpo supera 12 MB.': { en: 'The request is larger than 12 MB.', fr: 'La requête dépasse 12 Mo.', de: 'Die Anfrage ist größer als 12 MB.', gl: 'A solicitude supera 12 MB.' },
+    'El estado de la página no es válido.': { en: 'The page state is not valid.', fr: 'L’état de la page n’est pas valide.', de: 'Der Seitenstatus ist ungültig.', gl: 'O estado da páxina non é válido.' },
+    'El guion de la página llegó vacío.': { en: 'The page script came back empty.', fr: 'Le script de la page est arrivé vide.', de: 'Das Skript der Seite kam leer zurück.', gl: 'O guión da páxina chegou baleiro.' },
+    'El género no es válido.': { en: 'The genre is not valid.', fr: 'Le genre n’est pas valide.', de: 'Das Genre ist ungültig.', gl: 'O xénero non é válido.' },
+    'El identificador de la página no coincide.': { en: 'The page identifier does not match.', fr: 'L’identifiant de la page ne correspond pas.', de: 'Die Seitenkennung stimmt nicht überein.', gl: 'O identificador da páxina non coincide.' },
+    'El identificador del borrador no es válido.': { en: 'The draft identifier is not valid.', fr: 'L’identifiant du brouillon n’est pas valide.', de: 'Die Entwurfskennung ist ungültig.', gl: 'O identificador do borrador non é válido.' },
+    'El idioma no es válido.': { en: 'The language is not valid.', fr: 'La langue n’est pas valide.', de: 'Die Sprache ist ungültig.', gl: 'O idioma non é válido.' },
+    'El modelo no devolvió ninguna imagen.': { en: 'The model did not return an image.', fr: 'Le modèle n’a renvoyé aucune image.', de: 'Das Modell hat kein Bild geliefert.', gl: 'O modelo non devolveu ningunha imaxe.' },
+    'El modo de narración no es válido.': { en: 'The narration mode is not valid.', fr: 'Le mode de narration n’est pas valide.', de: 'Der Erzählmodus ist ungültig.', gl: 'O modo de narración non é válido.' },
+    'El parámetro after no es válido.': { en: 'The "after" parameter is not valid.', fr: 'Le paramètre « after » n’est pas valide.', de: 'Der Parameter „after“ ist ungültig.', gl: 'O parámetro «after» non é válido.' },
+    'El servicio de generación no está configurado.': { en: 'The generation service is not configured.', fr: 'Le service de génération n’est pas configuré.', de: 'Der Generierungsdienst ist nicht eingerichtet.', gl: 'O servizo de xeración non está configurado.' },
+    'El tipo o índice de la página no coincide con su identificador.': { en: 'The page type or number does not match its identifier.', fr: 'Le type ou le numéro de la page ne correspond pas à son identifiant.', de: 'Typ oder Nummer der Seite passen nicht zu ihrer Kennung.', gl: 'O tipo ou o número da páxina non coincide co seu identificador.' },
+    'Esta página ya tiene una opción resuelta.': { en: 'A choice has already been made on this page.', fr: 'Un choix a déjà été fait sur cette page.', de: 'Auf dieser Seite wurde bereits entschieden.', gl: 'Nesta páxina xa se escolleu unha opción.' },
+    'Historia no encontrada.': { en: 'Comic not found.', fr: 'BD introuvable.', de: 'Comic nicht gefunden.', gl: 'Non se atopou o cómic.' },
+    'Identificador no válido.': { en: 'Invalid identifier.', fr: 'Identifiant non valide.', de: 'Ungültige Kennung.', gl: 'Identificador non válido.' },
+    'Imagen no encontrada.': { en: 'Image not found.', fr: 'Image introuvable.', de: 'Bild nicht gefunden.', gl: 'Non se atopou a imaxe.' },
+    'JSON no válido.': { en: 'Invalid JSON.', fr: 'JSON non valide.', de: 'Ungültiges JSON.', gl: 'JSON non válido.' },
+    'LIMITE_DE_CONSUMO: límite diario de tokens alcanzado.': { en: 'Daily token limit reached.', fr: 'Limite quotidienne de jetons atteinte.', de: 'Tägliches Token-Limit erreicht.', gl: 'Acadouse o límite diario de tokens.' },
+    'límite diario de tokens alcanzado.': { en: 'Daily token limit reached.', fr: 'Limite quotidienne de jetons atteinte.', de: 'Tägliches Token-Limit erreicht.', gl: 'Acadouse o límite diario de tokens.' },
+    'LIMITE_DE_CONSUMO: presupuesto diario agotado.': { en: 'The daily budget has run out.', fr: 'Le budget quotidien est épuisé.', de: 'Das Tagesbudget ist aufgebraucht.', gl: 'Esgotouse o orzamento diario.' },
+    'presupuesto diario agotado.': { en: 'The daily budget has run out.', fr: 'Le budget quotidien est épuisé.', de: 'Das Tagesbudget ist aufgebraucht.', gl: 'Esgotouse o orzamento diario.' },
+    'La clave de la API no es válida.': { en: 'The API key is not valid.', fr: 'La clé d’API n’est pas valide.', de: 'Der API-Schlüssel ist ungültig.', gl: 'A clave da API non é válida.' },
+    'La configuración no es válida.': { en: 'The settings are not valid.', fr: 'La configuration n’est pas valide.', de: 'Die Einstellungen sind ungültig.', gl: 'A configuración non é válida.' },
+    'La contraseña no es válida.': { en: 'The password is not valid.', fr: 'Le mot de passe n’est pas valide.', de: 'Das Passwort ist ungültig.', gl: 'O contrasinal non é válido.' },
+    'La generación de cómics no está disponible en este momento.': { en: 'Comic generation is not available right now.', fr: 'La génération de BD n’est pas disponible pour le moment.', de: 'Die Comic-Erstellung ist gerade nicht verfügbar.', gl: 'A xeración de cómics non está dispoñible neste momento.' },
+    'La historia ya tiene el máximo de páginas.': { en: 'The comic already has the maximum number of pages.', fr: 'La BD a déjà le nombre maximal de pages.', de: 'Der Comic hat bereits die maximale Seitenzahl.', gl: 'O cómic xa ten o máximo de páxinas.' },
+    'La imagen de la página debe ser un JPEG válido.': { en: 'The page image must be a valid JPEG.', fr: 'L’image de la page doit être un JPEG valide.', de: 'Das Seitenbild muss ein gültiges JPEG sein.', gl: 'A imaxe da páxina debe ser un JPEG válido.' },
+    'La invitación ha caducado o no existe.': { en: 'The invitation has expired or does not exist.', fr: 'L’invitation a expiré ou n’existe pas.', de: 'Die Einladung ist abgelaufen oder existiert nicht.', gl: 'O convite caducou ou non existe.' },
+    'La invitación vinculada no es válida.': { en: 'The linked invitation is not valid.', fr: 'L’invitation liée n’est pas valide.', de: 'Die verknüpfte Einladung ist ungültig.', gl: 'O convite vinculado non é válido.' },
+    'La invitación ya tiene el máximo de respuestas.': { en: 'The invitation already has the maximum number of replies.', fr: 'L’invitation a déjà le nombre maximal de réponses.', de: 'Die Einladung hat bereits die maximale Zahl an Antworten.', gl: 'O convite xa ten o máximo de respostas.' },
+    'La narración de la página no es válida.': { en: 'The page narration is not valid.', fr: 'La narration de la page n’est pas valide.', de: 'Der Seitentext ist ungültig.', gl: 'A narración da páxina non é válida.' },
+    'La opción no está disponible para esta página.': { en: 'That choice is not available on this page.', fr: 'Ce choix n’est pas disponible sur cette page.', de: 'Diese Option gibt es auf dieser Seite nicht.', gl: 'Esa opción non está dispoñible nesta páxina.' },
+    'La opción resuelta no es válida.': { en: 'The chosen option is not valid.', fr: 'Le choix effectué n’est pas valide.', de: 'Die getroffene Wahl ist ungültig.', gl: 'A opción escollida non é válida.' },
+    'La opción seleccionada no es válida.': { en: 'The selected option is not valid.', fr: 'L’option sélectionnée n’est pas valide.', de: 'Die gewählte Option ist ungültig.', gl: 'A opción seleccionada non é válida.' },
+    'La página de la historia no es válida.': { en: 'The comic page is not valid.', fr: 'La page de la BD n’est pas valide.', de: 'Die Comicseite ist ungültig.', gl: 'A páxina do cómic non é válida.' },
+    'La respuesta seleccionada no es válida.': { en: 'The selected reply is not valid.', fr: 'La réponse sélectionnée n’est pas valide.', de: 'Die gewählte Antwort ist ungültig.', gl: 'A resposta seleccionada non é válida.' },
+    'La ruta de la solicitud no es válida.': { en: 'The request path is not valid.', fr: 'Le chemin de la requête n’est pas valide.', de: 'Der Anfragepfad ist ungültig.', gl: 'A ruta da solicitude non é válida.' },
+    'La suscripción no es válida.': { en: 'The notification subscription is not valid.', fr: 'L’abonnement aux notifications n’est pas valide.', de: 'Das Benachrichtigungsabo ist ungültig.', gl: 'A subscrición aos avisos non é válida.' },
+    'Las opciones de la página no son válidas.': { en: 'The page choices are not valid.', fr: 'Les choix de la page ne sont pas valides.', de: 'Die Optionen der Seite sind ungültig.', gl: 'As opcións da páxina non son válidas.' },
+    'Los cambios de la historia no son válidos.': { en: 'The comic changes are not valid.', fr: 'Les modifications de la BD ne sont pas valides.', de: 'Die Änderungen am Comic sind ungültig.', gl: 'Os cambios do cómic non son válidos.' },
+    'Los filtros no son válidos.': { en: 'The filters are not valid.', fr: 'Les filtres ne sont pas valides.', de: 'Die Filter sind ungültig.', gl: 'Os filtros non son válidos.' },
+    'Modelo no permitido.': { en: 'Model not allowed.', fr: 'Modèle non autorisé.', de: 'Modell nicht erlaubt.', gl: 'Modelo non permitido.' },
+    'Método no permitido.': { en: 'Method not allowed.', fr: 'Méthode non autorisée.', de: 'Methode nicht erlaubt.', gl: 'Método non permitido.' },
+    'No se encontró el panel de administración.': { en: 'The admin panel was not found.', fr: 'Le panneau d’administration est introuvable.', de: 'Das Admin-Panel wurde nicht gefunden.', gl: 'Non se atopou o panel de administración.' },
+    'No se encontró la aplicación.': { en: 'The app was not found.', fr: 'L’application est introuvable.', de: 'Die App wurde nicht gefunden.', gl: 'Non se atopou a aplicación.' },
+    'No se encontró la historia.': { en: 'The comic was not found.', fr: 'La BD est introuvable.', de: 'Der Comic wurde nicht gefunden.', gl: 'Non se atopou o cómic.' },
+    'No se encontró la invitación.': { en: 'The invitation was not found.', fr: 'L’invitation est introuvable.', de: 'Die Einladung wurde nicht gefunden.', gl: 'Non se atopou o convite.' },
+    'No se encontró la página de la historia.': { en: 'The comic page was not found.', fr: 'La page de la BD est introuvable.', de: 'Die Comicseite wurde nicht gefunden.', gl: 'Non se atopou a páxina do cómic.' },
+    'No se encontró la respuesta.': { en: 'The reply was not found.', fr: 'La réponse est introuvable.', de: 'Die Antwort wurde nicht gefunden.', gl: 'Non se atopou a resposta.' },
+    'No se encontró la ruta de la API.': { en: 'API route not found.', fr: 'Route d’API introuvable.', de: 'API-Route nicht gefunden.', gl: 'Non se atopou a ruta da API.' },
+    'No se pudieron leer los datos de la historia.': { en: 'The comic data could not be read.', fr: 'Impossible de lire les données de la BD.', de: 'Die Comic-Daten konnten nicht gelesen werden.', gl: 'Non se puideron ler os datos do cómic.' },
+    'No se pudieron leer los datos de la invitación.': { en: 'The invitation data could not be read.', fr: 'Impossible de lire les données de l’invitation.', de: 'Die Einladungsdaten konnten nicht gelesen werden.', gl: 'Non se puideron ler os datos do convite.' },
+    'No se pudo crear el personaje secundario.': { en: 'The sidekick could not be created.', fr: 'Impossible de créer le personnage secondaire.', de: 'Die Nebenfigur konnte nicht erstellt werden.', gl: 'Non se puido crear o personaxe secundario.' },
+    'No se pudo definir el aspecto de los personajes.': { en: 'The characters’ look could not be defined.', fr: 'Impossible de définir l’apparence des personnages.', de: 'Das Aussehen der Figuren konnte nicht festgelegt werden.', gl: 'Non se puido definir o aspecto dos personaxes.' },
+    'No se pudo servir el archivo.': { en: 'The file could not be served.', fr: 'Impossible de servir le fichier.', de: 'Die Datei konnte nicht ausgeliefert werden.', gl: 'Non se puido servir o ficheiro.' },
+    'No se recibió ninguna propuesta de título.': { en: 'No title proposal was received.', fr: 'Aucune proposition de titre n’a été reçue.', de: 'Es kam kein Titelvorschlag.', gl: 'Non se recibiu ningunha proposta de título.' },
+    'No tienes autorización para esta historia.': { en: 'You are not allowed to open this comic.', fr: 'Tu n’as pas accès à cette BD.', de: 'Du hast keinen Zugriff auf diesen Comic.', gl: 'Non tes autorización para este cómic.' },
+    'No tienes autorización para esta invitación.': { en: 'You are not allowed to use this invitation.', fr: 'Tu n’as pas accès à cette invitation.', de: 'Du hast keinen Zugriff auf diese Einladung.', gl: 'Non tes autorización para este convite.' },
+    'No tienes autorización para vincular esta invitación.': { en: 'You are not allowed to link this invitation.', fr: 'Tu n’as pas le droit de lier cette invitation.', de: 'Du darfst diese Einladung nicht verknüpfen.', gl: 'Non tes autorización para vincular este convite.' },
+    'Panel de administración deshabilitado.': { en: 'The admin panel is disabled.', fr: 'Le panneau d’administration est désactivé.', de: 'Das Admin-Panel ist deaktiviert.', gl: 'O panel de administración está desactivado.' },
+    'RATE_LIMIT: demasiadas solicitudes.': { en: 'Too many requests. Please wait a moment.', fr: 'Trop de requêtes. Patiente un instant.', de: 'Zu viele Anfragen. Bitte warte kurz.', gl: 'Demasiadas solicitudes. Agarda un momento.' },
+    'Respuesta no válida del servicio de generación.': { en: 'Invalid response from the generation service.', fr: 'Réponse non valide du service de génération.', de: 'Ungültige Antwort des Generierungsdienstes.', gl: 'Resposta non válida do servizo de xeración.' },
+    'Error del servicio de generación.': { en: 'Generation service error.', fr: 'Erreur du service de génération.', de: 'Fehler des Generierungsdienstes.', gl: 'Erro do servizo de xeración.' },
+    'El generador ha tardado demasiado en responder.': { en: 'The generator took too long to respond.', fr: 'Le générateur a mis trop de temps à répondre.', de: 'Der Generator hat zu lange gebraucht.', gl: 'O xerador tardou demasiado en responder.' },
+    'No se pudo obtener respuesta del generador.': { en: 'No response from the generator.', fr: 'Aucune réponse du générateur.', de: 'Keine Antwort vom Generator.', gl: 'Non se obtivo resposta do xerador.' },
+    'Ruta de administración no encontrada.': { en: 'Admin route not found.', fr: 'Route d’administration introuvable.', de: 'Admin-Route nicht gefunden.', gl: 'Non se atopou a ruta de administración.' },
+    'Ruta no encontrada.': { en: 'Route not found.', fr: 'Route introuvable.', de: 'Route nicht gefunden.', gl: 'Non se atopou a ruta.' },
+    'Se alcanzó el límite de historias almacenadas.': { en: 'The limit of stored comics has been reached.', fr: 'La limite de BD enregistrées est atteinte.', de: 'Die Höchstzahl gespeicherter Comics ist erreicht.', gl: 'Acadouse o límite de cómics gardados.' },
+    'Se alcanzó el límite de invitaciones almacenadas.': { en: 'The limit of stored invitations has been reached.', fr: 'La limite d’invitations enregistrées est atteinte.', de: 'Die Höchstzahl gespeicherter Einladungen ist erreicht.', gl: 'Acadouse o límite de convites gardados.' },
+    'Se requiere contenido JSON.': { en: 'JSON content is required.', fr: 'Un contenu JSON est requis.', de: 'JSON-Inhalt erforderlich.', gl: 'Requírese contido JSON.' },
+    'Se requiere un borrador válido.': { en: 'A valid draft is required.', fr: 'Un brouillon valide est requis.', de: 'Ein gültiger Entwurf ist erforderlich.', gl: 'Requírese un borrador válido.' },
+    'Sesión no iniciada o caducada.': { en: 'Not signed in, or the session has expired.', fr: 'Non connecté ou session expirée.', de: 'Nicht angemeldet oder Sitzung abgelaufen.', gl: 'Sesión non iniciada ou caducada.' },
+    'Solicitud de administración no válida.': { en: 'Invalid admin request.', fr: 'Requête d’administration non valide.', de: 'Ungültige Admin-Anfrage.', gl: 'Solicitude de administración non válida.' },
+    'Solicitud interrumpida.': { en: 'The request was interrupted.', fr: 'La requête a été interrompue.', de: 'Die Anfrage wurde unterbrochen.', gl: 'A solicitude interrompeuse.' },
+    'Solo quien creó la historia puede eliminarla.': { en: 'Only the comic’s creator can delete it.', fr: 'Seule la personne qui a créé la BD peut la supprimer.', de: 'Nur wer den Comic erstellt hat, kann ihn löschen.', gl: 'Só quen creou o cómic pode borralo.' },
+    'Solo quien creó la historia puede modificarla.': { en: 'Only the comic’s creator can change it.', fr: 'Seule la personne qui a créé la BD peut la modifier.', de: 'Nur wer den Comic erstellt hat, kann ihn ändern.', gl: 'Só quen creou o cómic pode modificalo.' },
+    'Solo quien creó la historia puede reanudarla.': { en: 'Only the comic’s creator can resume it.', fr: 'Seule la personne qui a créé la BD peut la relancer.', de: 'Nur wer den Comic erstellt hat, kann ihn fortsetzen.', gl: 'Só quen creou o cómic pode retomalo.' },
+    'Ya se ha aceptado otra respuesta para esta invitación.': { en: 'Another reply has already been accepted for this invitation.', fr: 'Une autre réponse a déjà été acceptée pour cette invitation.', de: 'Für diese Einladung wurde bereits eine andere Antwort angenommen.', gl: 'Xa se aceptou outra resposta para este convite.' },
+    'Ya se ha aceptado una respuesta para esta invitación.': { en: 'A reply has already been accepted for this invitation.', fr: 'Une réponse a déjà été acceptée pour cette invitation.', de: 'Für diese Einladung wurde bereits eine Antwort angenommen.', gl: 'Xa se aceptou unha resposta para este convite.' },
+    'Error interno del servidor.': { en: 'Internal server error.', fr: 'Erreur interne du serveur.', de: 'Interner Serverfehler.', gl: 'Erro interno do servidor.' },
+    'Ocurrió un error interno del servidor.': { en: 'An internal server error occurred.', fr: 'Une erreur interne du serveur s’est produite.', de: 'Ein interner Serverfehler ist aufgetreten.', gl: 'Produciuse un erro interno do servidor.' },
+    '¡Hay una decisión pendiente! Entra para elegir cómo sigue la historia.': { en: 'A decision is waiting! Come in and choose how the story goes on.', fr: 'Une décision t’attend ! Viens choisir la suite de l’histoire.', de: 'Eine Entscheidung wartet! Komm und wähle, wie die Geschichte weitergeht.', gl: 'Hai unha decisión pendente! Entra para escoller como segue a historia.' },
+    '¡Tu cómic está terminado! Toca para leerlo.': { en: 'Your comic is finished! Tap to read it.', fr: 'Ta BD est terminée ! Touche pour la lire.', de: 'Dein Comic ist fertig! Tippe, um ihn zu lesen.', gl: 'O teu cómic está rematado! Toca para lelo.' },
+};
+
+// Messages with names or field labels in them; `$1` is the captured part.
+const PATTERNS: [RegExp, Translations][] = [
+    [/^(.+) todavía no se ha unido a la invitación\.$/, { en: '$1 has not joined the invitation yet.', fr: '$1 n’a pas encore rejoint l’invitation.', de: '$1 ist der Einladung noch nicht beigetreten.', gl: '$1 aínda non se uniu ao convite.' }],
+    [/^El campo (.+) no es válido\.$/, { en: 'The field $1 is not valid.', fr: 'Le champ $1 n’est pas valide.', de: 'Das Feld $1 ist ungültig.', gl: 'O campo $1 non é válido.' }],
+    [/^La imagen de (.+) no es un JPEG válido\.$/, { en: 'The image for $1 is not a valid JPEG.', fr: 'L’image de $1 n’est pas un JPEG valide.', de: 'Das Bild für $1 ist kein gültiges JPEG.', gl: 'A imaxe de $1 non é un JPEG válido.' }],
+];
+
+export function translateServerText(text: string, locale: string): string {
+    if (locale === 'es' || !text) return text;
+    const target = locale as Target;
+    const exact = EXACT[text.trim()];
+    if (exact?.[target]) return exact[target];
+    for (const [pattern, translations] of PATTERNS) {
+        if (pattern.test(text) && translations[target]) return text.replace(pattern, translations[target]);
+    }
+    return text;
+}

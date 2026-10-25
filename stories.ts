@@ -1,6 +1,6 @@
 import type { ComicFace, Persona } from './types.ts';
 import { invitationRequest, type StorySettings } from './invitations.ts';
-export { compressImage } from './images.ts';
+import { intlLocale, t } from './i18n.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
@@ -20,6 +20,15 @@ export interface StorySummary {
     totalPages: number;
 }
 
+// Progress of the server-side generator; null for comics it has not touched yet.
+export interface GenerationStatus {
+    state: 'queued' | 'styling' | 'generating' | 'retrying' | 'waiting' | 'finished' | 'stopped';
+    pageIndex?: number;
+    attempt?: number;
+    reason?: string;
+    at: number;
+}
+
 export interface StoryMeta extends StorySummary {
     hostName: string;
     guestName: string;
@@ -28,6 +37,9 @@ export interface StoryMeta extends StorySummary {
     styleGuide: string;
     version: number;
     role: 'owner' | 'guest';
+    generation: GenerationStatus | null;
+    // Only sent to the owner.
+    invitationId?: string | null;
 }
 
 export interface StoryDocument extends StoryMeta {
@@ -74,7 +86,7 @@ export function loadStoryKeys(): StoryKey[] {
     const saved: unknown = JSON.parse(localStorage.getItem(storyStorageKey) || '[]');
     if (!Array.isArray(saved) || !saved.every(item =>
         item && typeof item === 'object' && typeof item.id === 'string' && typeof item.ownerToken === 'string'
-    )) throw new Error('La lista de cómics guardada no es válida.');
+    )) throw new Error(t('error.savedStoriesInvalid'));
     return saved;
 }
 
@@ -82,12 +94,29 @@ export function saveStoryKeys(keys: StoryKey[]): void {
     localStorage.setItem(storyStorageKey, JSON.stringify(keys));
 }
 
-export function findOwnerToken(storyId: string): string | null {
+// Keys an admin obtained to continue other people's comics: kept for this tab only, apart from «Mis cómics».
+const adminStoryKeysKey = 'infinite-heroes.admin-story-keys';
+
+function loadAdminStoryKeys(): StoryKey[] {
     try {
-        return loadStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
+        const saved: unknown = JSON.parse(sessionStorage.getItem(adminStoryKeysKey) || '[]');
+        return Array.isArray(saved) ? saved.filter((item): item is StoryKey =>
+            item && typeof item.id === 'string' && typeof item.ownerToken === 'string') : [];
     } catch {
-        return null;
+        return [];
     }
+}
+
+export function rememberAdminStoryKey(key: StoryKey): void {
+    sessionStorage.setItem(adminStoryKeysKey, JSON.stringify([...loadAdminStoryKeys().filter(item => item.id !== key.id), key]));
+}
+
+export function findOwnerToken(storyId: string): string | null {
+    let own: string | null = null;
+    try {
+        own = loadStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
+    } catch { /* fall back to admin keys */ }
+    return own ?? loadAdminStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
 }
 
 export function authToken(auth: StoryAuth): string {
@@ -111,11 +140,11 @@ export async function storyRequest<T>(
     });
     if (response.status === 204) return undefined as T;
     if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error('El servidor de historias no está disponible. Arranca la aplicación con npm run dev o npm start.');
+        throw new Error(t('error.storyServer'));
     }
     const result = await response.json();
     if (!response.ok) {
-        const error = new Error(typeof result.error === 'string' ? result.error : 'No se pudo completar la petición.') as Error & { status?: number; resolvedChoice?: string };
+        const error = new Error(typeof result.error === 'string' ? result.error : t('error.requestFailed')) as Error & { status?: number; resolvedChoice?: string };
         error.status = response.status;
         if (typeof result.resolvedChoice === 'string') error.resolvedChoice = result.resolvedChoice;
         throw error;
@@ -131,7 +160,7 @@ export interface CreateStoryBody {
     friend: Persona | null;
     settings: StorySettings;
     tone: string;
-    invitation: { id: string; ownerToken: string } | null;
+    invitation: { id: string; ownerToken: string; responseId?: string } | null;
     draftId?: string;
 }
 
@@ -156,17 +185,19 @@ export function fetchStoryDelta(id: string, auth: StoryAuth, after: number, sign
     return storyRequest<StoryDelta>(`/${id}?after=${after}`, auth, { signal });
 }
 
-export function saveFace(id: string, auth: StoryAuth, face: ComicFace): Promise<{ version: number }> {
-    const { version: _ignored, ...body } = face;
-    return storyRequest(`/${id}/faces/${face.id}`, auth, { method: 'PUT', body });
-}
-
-export function patchStory(id: string, auth: StoryAuth, body: Partial<Pick<StoryDocument, 'friend' | 'styleGuide' | 'tone' | 'title'>>): Promise<{ version: number }> {
-    return storyRequest(`/${id}`, auth, { method: 'PATCH', body });
-}
-
 export function submitChoice(id: string, auth: StoryAuth, faceId: string, choice: string): Promise<{ version: number; faceId: string; resolvedChoice: string }> {
     return storyRequest(`/${id}/choices`, auth, { body: { faceId, choice } });
+}
+
+// Asks the server to (re)start drawing the comic, e.g. after it stopped on an error.
+export function restartGeneration(id: string, auth: StoryAuth): Promise<{ started: boolean }> {
+    return storyRequest(`/${id}/generate`, auth, { body: {} });
+}
+
+// `url` is where the notification takes the reader back to (this same comic, with the same credentials).
+// `lang` is the interface language the notifications should be written in.
+export function subscribeToStory(id: string, auth: StoryAuth, subscription: PushSubscriptionJSON, url: string, lang: string): Promise<{ subscribed: boolean }> {
+    return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url, lang } });
 }
 
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {
@@ -179,5 +210,5 @@ export function listGuestStories(invitationId: string, token: string, signal?: A
 }
 
 export function formatDate(timestamp: number): string {
-    return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
+    return new Intl.DateTimeFormat(intlLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
 }

@@ -3,12 +3,13 @@ import {
     AdminAuthError, adminRequest, errorText, formatCost, formatDate, formatNumber, imageUrl, statusLabel,
     type AdminStoryList, type StoryStatus
 } from './adminApi';
+import { t } from './i18n';
 
 const PAGE_SIZE = 20;
 
 function Photo({ storyId, which, alt, deleted }: { storyId: string; which: string; alt: string; deleted: boolean }) {
     const [failed, setFailed] = useState(false);
-    if (deleted || failed) return <span className="photo placeholder" aria-label={`${alt}: no disponible`}>—</span>;
+    if (deleted || failed) return <span className="photo placeholder" aria-label={t('admin.unavailable', { label: alt })}>—</span>;
     return <img className="photo" src={imageUrl(storyId, which)} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
 }
 
@@ -44,44 +45,44 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
 
     return (
         <>
-            <h1>Cómics</h1>
+            <h1>{t('admin.comics')}</h1>
             <form className="filters" role="search" onSubmit={event => event.preventDefault()}>
-                <label>Buscar
-                    <input type="search" placeholder="Título o nombre" value={query} onChange={event => setQuery(event.target.value)} />
+                <label>{t('admin.search')}
+                    <input type="search" placeholder={t('admin.searchPlaceholder')} value={query} onChange={event => setQuery(event.target.value)} />
                 </label>
-                <label>Estado
+                <label>{t('admin.statusLabel')}
                     <select value={status} onChange={event => { setStatus(event.target.value as 'all' | StoryStatus); setPage(1); }}>
-                        <option value="all">Todos</option>
-                        <option value="in_progress">En curso</option>
-                        <option value="complete">Completos</option>
-                        <option value="deleted">Borrados</option>
+                        <option value="all">{t('admin.all')}</option>
+                        <option value="in_progress">{t('admin.status.inProgress')}</option>
+                        <option value="complete">{t('admin.completeCount')}</option>
+                        <option value="deleted">{t('admin.deletedCount')}</option>
                     </select>
                 </label>
-                <label>Ordenar por
+                <label>{t('admin.sortBy')}
                     <select value={sort} onChange={event => { setSort(event.target.value); setPage(1); }}>
-                        <option value="createdAt">Creación</option>
-                        <option value="updatedAt">Última actividad</option>
-                        <option value="cost">Coste</option>
-                        <option value="title">Título</option>
+                        <option value="createdAt">{t('admin.sort.created')}</option>
+                        <option value="updatedAt">{t('admin.sort.updated')}</option>
+                        <option value="cost">{t('admin.cost')}</option>
+                        <option value="title">{t('admin.sort.title')}</option>
                     </select>
                 </label>
-                <label>Orden
+                <label>{t('admin.order')}
                     <select value={order} onChange={event => { setOrder(event.target.value as 'asc' | 'desc'); setPage(1); }}>
-                        <option value="desc">Descendente</option>
-                        <option value="asc">Ascendente</option>
+                        <option value="desc">{t('admin.desc')}</option>
+                        <option value="asc">{t('admin.asc')}</option>
                     </select>
                 </label>
             </form>
             {error && <p role="alert" className="error">{error}</p>}
-            {!data && !error && <p role="status">Cargando cómics...</p>}
+            {!data && !error && <p role="status">{t('admin.loadingComics')}</p>}
             {data && (
                 <div className="table-wrap">
                     <table>
                         <thead>
                             <tr>
-                                <th scope="col">Fotos</th><th scope="col">Cómic</th><th scope="col">Estado</th>
-                                <th scope="col">Páginas</th><th scope="col">Llamadas</th><th scope="col">Tokens</th>
-                                <th scope="col">Coste</th><th scope="col">Creado</th>
+                                <th scope="col">{t('admin.photos')}</th><th scope="col">{t('admin.comic')}</th><th scope="col">{t('admin.statusLabel')}</th>
+                                <th scope="col">{t('admin.pages')}</th><th scope="col">{t('admin.calls')}</th><th scope="col">{t('admin.tokens')}</th>
+                                <th scope="col">{t('admin.cost')}</th><th scope="col">{t('admin.created')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -91,33 +92,33 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                                     <tr key={item.id}>
                                         <td>
                                             <div className="photos">
-                                                <Photo storyId={item.id} which="hero" alt={`Foto de ${item.hostName}`} deleted={deleted} />
-                                                {item.hasFriend && <Photo storyId={item.id} which="friend" alt={`Foto de ${item.guestName || 'coprotagonista'}`} deleted={deleted} />}
+                                                <Photo storyId={item.id} which="hero" alt={t('invite.photoOf', { name: item.hostName })} deleted={deleted} />
+                                                {item.hasFriend && <Photo storyId={item.id} which="friend" alt={t('invite.photoOf', { name: item.guestName || t('cast.costar') })} deleted={deleted} />}
                                             </div>
                                         </td>
                                         <td>
                                             <a href={`#/story/${item.id}`}><strong>{item.title}</strong></a>
-                                            <div className="muted small">{item.hostName}{item.guestName ? ` y ${item.guestName}` : ''}</div>
+                                            <div className="muted small">{item.guestName ? t('pdf.castPair', { host: item.hostName, guest: item.guestName }) : item.hostName}</div>
                                         </td>
-                                        <td><span className={`badge ${item.status}`}>{statusLabel[item.status]}</span></td>
+                                        <td><span className={`badge ${item.status}`}>{statusLabel(item.status)}</span></td>
                                         <td>{item.completedPages}/{item.totalPages}</td>
-                                        <td>{formatNumber(item.usage.calls)}{item.usage.errors > 0 && <span className="muted small"> ({item.usage.errors} err.)</span>}</td>
+                                        <td>{formatNumber(item.usage.calls)}{item.usage.errors > 0 && <span className="muted small"> ({t('admin.errShort', { count: item.usage.errors })})</span>}</td>
                                         <td>{formatNumber(item.usage.tokens.total)}</td>
                                         <td>{formatCost(item.usage)}</td>
                                         <td>{formatDate(item.createdAt)}</td>
                                     </tr>
                                 );
                             })}
-                            {!data.items.length && <tr><td colSpan={8} className="muted">No hay cómics que coincidan.</td></tr>}
+                            {!data.items.length && <tr><td colSpan={8} className="muted">{t('admin.noMatches')}</td></tr>}
                         </tbody>
                     </table>
                 </div>
             )}
             {data && pages > 1 && (
-                <nav className="pager" aria-label="Paginación">
-                    <button type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>Anterior</button>
-                    <span>Página {page} de {pages} · {data.total} cómics</span>
-                    <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>Siguiente</button>
+                <nav className="pager" aria-label={t('admin.pagination')}>
+                    <button type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>{t('admin.previous')}</button>
+                    <span>{t('admin.pageOf', { page, pages, total: data.total })}</span>
+                    <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t('admin.next')}</button>
                 </nav>
             )}
         </>

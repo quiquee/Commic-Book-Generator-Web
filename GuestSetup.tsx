@@ -6,6 +6,7 @@ import {
     type Invitation, type JoinCredentials
 } from './invitations';
 import { formatDate, type StorySummary } from './stories';
+import { t } from './i18n';
 
 type GuestInvitation = Omit<Invitation, 'responses'> & { stories?: StorySummary[] };
 
@@ -32,7 +33,7 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
                     !('persona' in data) || !data.persona || typeof data.persona !== 'object' ||
                     !('base64' in data.persona) || typeof data.persona.base64 !== 'string' ||
                     !('desc' in data.persona) || typeof data.persona.desc !== 'string') {
-                    throw new Error('La participación guardada no es válida.');
+                    throw new Error(t('error.savedResponseInvalid'));
                 }
                 setResponseId(data.id);
                 setPhoto({ base64: data.persona.base64, desc: data.persona.desc });
@@ -118,8 +119,8 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
 
     if (!invitation) return (
         <div className="bg-white border-4 border-black p-8 max-w-lg">
-            <h1 className="font-comic text-3xl">Unirse a una historia</h1>
-            {error ? <p role="alert" className="text-red-700">{error}</p> : <p role="status">Cargando invitación...</p>}
+            <h1 className="font-comic text-3xl">{t('guest.joinTitle')}</h1>
+            {error ? <p role="alert" className="text-red-700">{error}</p> : <p role="status">{t('invite.loading')}</p>}
         </div>
     );
 
@@ -138,27 +139,27 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
             onPremiseChange={() => {}} onRichModeChange={() => {}}
             onLaunch={join}
             launchDisabled={!photo || busy || !!responseId}
-            launchLabel={busy ? 'Procesando...' : responseId ? 'Solicitud enviada' : '¡Empezar historia juntos!'}
+            launchLabel={busy ? t('common.processing') : responseId ? t('guest.joined') : t('guest.join')}
         >
             <div className="text-left border-2 border-black bg-blue-50 p-3 mb-4">
-                <p>Has recibido una invitación de <strong>{invitation.hostName}</strong> para ser coprotagonista como <strong>{invitation.guestName}</strong>.</p>
-                {!responseId && <p>Sube únicamente tu foto y pulsa «Empezar historia juntos». El protagonista confirmará tu participación y creará la historia desde su dispositivo.</p>}
-                {status === 'pending' && <p role="status" className="font-bold">Foto enviada. Esperando la confirmación de {invitation.hostName}...</p>}
-                {status === 'accepted' && <p role="status" className="font-bold text-green-800">¡{invitation.hostName} ha aceptado! El cómic aparecerá en la lista de abajo en cuanto empiece a crearse.</p>}
+                <p>{t('guest.intro', { host: invitation.hostName, guest: invitation.guestName })}</p>
+                {!responseId && <p>{t('guest.howTo', { host: invitation.hostName })}</p>}
+                {status === 'pending' && <p role="status" className="font-bold">{t('guest.sent', { host: invitation.hostName })}</p>}
+                {status === 'accepted' && <p role="status" className="font-bold text-green-800">{t('guest.started', { host: invitation.hostName })}</p>}
                 {error && <p role="alert" className="text-red-700">{error}</p>}
             </div>
             {!!invitation.stories?.length && (
                 <section className="text-left border-4 border-black bg-green-50 p-3 mb-4">
-                    <h2 className="font-comic text-2xl">Cómics compartidos contigo</h2>
-                    <p className="text-sm mb-2">Puedes leerlos mientras se crean y tomar las decisiones de la historia. Solo {invitation.hostName} puede borrarlos.</p>
+                    <h2 className="font-comic text-2xl">{t('guest.sharedTitle')}</h2>
+                    <p className="text-sm mb-2">{t('guest.sharedHint', { host: invitation.hostName })}</p>
                     <ul className="flex flex-col gap-2">
                         {invitation.stories.map(summary => (
                             <li key={summary.id} className="border-2 border-black bg-white p-2 flex flex-wrap items-center gap-2">
                                 <div className="flex-1 min-w-[12rem]">
                                     <p className="font-comic text-lg">{summary.title}</p>
-                                    <p className="text-xs text-gray-700">{summary.completedPages}/{summary.totalPages} páginas · {formatDate(summary.updatedAt)}</p>
+                                    <p className="text-xs text-gray-700">{t('library.pages', { done: summary.completedPages, total: summary.totalPages })} · {formatDate(summary.updatedAt)}</p>
                                 </div>
-                                <button type="button" onClick={() => onOpenStory(summary.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">Abrir</button>
+                                <button type="button" onClick={() => onOpenStory(summary.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('common.open')}</button>
                             </li>
                         ))}
                     </ul>

@@ -21,7 +21,7 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
  */
 export function createAdminHandler({
   adminPassword, trustProxy = false, auditFile, usage, listActiveStories, getStory,
-  deleteStoryById, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage,
+  deleteStoryById, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
 }) {
   const secret = randomBytes(32);
   const passwordHash = hash(adminPassword || '');
@@ -218,6 +218,17 @@ export function createAdminHandler({
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': `attachment; filename="usage-${new Date().toISOString().slice(0, 10)}.csv"` });
         res.end('\ufeff' + fields.join(',') + '\r\n' + rows.join('\r\n') + '\r\n'); return true;
+      }
+      // Hands the owner key to the admin so an unfinished comic can be continued from the main page.
+      const resume = /^\/api\/admin\/stories\/([^/]+)\/continue$/.exec(path);
+      if (resume && req.method === 'POST') {
+        let id;
+        try { id = decodeURIComponent(resume[1]); } catch { fail(400, 'Identificador no válido.'); }
+        const record = await getStory(id);
+        if (!record) fail(404, 'Historia no encontrada.');
+        await audit('story_continue', req, id);
+        resumeStory(id);
+        return json(200, { id: record.id, ownerToken: record.ownerToken });
       }
       const match = /^\/api\/admin\/stories\/([^/]+)(?:\/image\/(hero|friend|cover|page-(?:[1-9]|1[01])))?$/.exec(path);
       if (match) {
