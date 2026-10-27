@@ -1255,6 +1255,14 @@ export function createAppServer({
         return;
       }
       if (dev) {
+        // Vite's dev server can serve any file under the project root. Never let it reach the data folder
+        // (comics, invitations, keys, audit log), git metadata or env files, however the path is encoded.
+        let decoded;
+        try { decoded = decodeURIComponent(url.pathname); } catch { decoded = url.pathname; }
+        if (/(^|[\\/])(\.data|\.git|\.env[^\\/]*)([\\/]|$)/i.test(decoded)) {
+          sendJson(response, 404, { error: 'No se encontró la aplicación.' });
+          return;
+        }
         const vite = await initializeVite();
         await new Promise((resolveMiddleware, rejectMiddleware) => {
           vite.middlewares(request, response, (error) => {
