@@ -15,6 +15,7 @@ let upstream;
 let server;
 let base;
 let failing = false;
+let blocked = false;
 let calls = [];
 let sent = [];
 
@@ -27,6 +28,10 @@ async function startUpstream() {
     const prompt = JSON.stringify(body.contents);
     calls.push(req.url);
     res.setHeader('content-type', 'application/json');
+    if (blocked) {
+      res.end(JSON.stringify({ promptFeedback: { blockReason: 'PROHIBITED_CONTENT' }, usageMetadata: { totalTokenCount: 5 } }));
+      return;
+    }
     if (failing) {
       res.statusCode = 500;
       res.end(JSON.stringify({ error: { code: 500, message: 'Fallo simulado', status: 'INTERNAL' } }));
@@ -44,7 +49,7 @@ async function startUpstream() {
 async function startServer() {
   server = createAppServer({
     dataDir: join(dir, 'invitations'), storiesDir: join(dir, 'stories'), usageDir: join(dir, 'usage'),
-    auditFile: join(dir, 'audit.log'), pricingFile: join(dir, 'pricing.json'),
+    auditFile: join(dir, 'audit.log'), geminiLogFile: join(dir, 'gemini.log'), adminPassword: 'secret', pricingFile: join(dir, 'pricing.json'),
     geminiApiKey: 'TEST_KEY', geminiUpstream: `http://127.0.0.1:${upstream.address().port}`,
     generationRetryDelayMs: 5,
     pushService: { publicKey: async () => 'PUBLIC', send: async (subscription, payload) => { sent.push(payload); return 'sent'; } },
@@ -79,6 +84,7 @@ const done = (story) => story.faces.filter((face) => face.imageUrl && !face.isLo
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'comic-worker-test-'));
   failing = false;
+  blocked = false;
   calls = [];
   sent = [];
   await startUpstream();
@@ -156,4 +162,39 @@ test('after repeated failures generation stops, and only the owner can restart i
   failing = false;
   assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST', token: ownerToken })).status, 202);
   await until(read, (story) => story.generation?.state === 'waiting', 'reanudación manual');
+});
+
+test('refused content stops at once without retrying, is logged, and the owner can rewrite the instructions', async () => {
+  blocked = true;
+  const { id, ownerToken } = await createComic();
+  const read = async () => (await api(`/api/stories/${id}`, { token: ownerToken })).payload;
+  const stopped = await until(read, (story) => story.generation?.state === 'stopped', 'parada por contenido rechazado');
+  assert.equal(calls.length, 1);
+  assert.equal(stopped.generation.blocked, true);
+  assert.match(stopped.generation.reason, /rechazado el contenido/);
+
+  const log = (await readFile(join(dir, 'gemini.log'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(log.length, 1);
+  assert.equal(log[0].blockReason, 'PROHIBITED_CONTENT');
+  assert.equal(log[0].ok, false);
+  assert.equal(log[0].scopeId, id);
+  assert.match(log[0].prompt.text, /Una idea/);
+  assert.ok(!JSON.stringify(log[0]).includes('TEST_KEY'));
+
+  const login = await fetch(`${base}/api/admin/login`, { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-admin-request': '1' }, body: JSON.stringify({ password: 'secret' }) });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const shown = await (await fetch(`${base}/api/admin/gemini-log?failed=1`, { headers: { cookie } })).json();
+  assert.equal(shown.items[0].blockReason, 'PROHIBITED_CONTENT');
+  assert.equal((await fetch(`${base}/api/admin/gemini-log?limit=0`, { headers: { cookie } })).status, 400);
+  assert.equal((await fetch(`${base}/api/admin/gemini-log`)).status, 401);
+
+  const edit = (token, instructions) => api(`/api/stories/${id}/instructions`, { method: 'POST', token, body: { instructions } });
+  assert.equal((await edit(undefined, 'Algo nuevo')).status, 401);
+  assert.equal((await edit(ownerToken, '')).status, 400);
+  blocked = false;
+  assert.equal((await edit(ownerToken, 'Una aventura en el mar')).status, 202);
+  const finished = await until(read, (story) => story.generation?.state === 'waiting', 'reanudación tras cambiar instrucciones');
+  assert.equal(finished.settings.premise, 'Una aventura en el mar');
+  assert.equal((await edit(ownerToken, 'Otra vez')).status, 409);
 });

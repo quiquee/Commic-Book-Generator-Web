@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import {
   apiErrorMessage, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError,
+  isContentBlockedError,
 } from './generation.ts';
 import { faceId, faceType, findFace, isStoryFinished, nextPageToGenerate, pendingDecision, previousImage } from './storyLogic.ts';
 import { DECISION_PAGES } from './types.ts';
@@ -142,7 +143,9 @@ export function createStoryWorker({
         const reason = fatalGenerationMessage(error)
           ?? (isApiKeyError(error) ? 'La clave de la API no es válida.' : null);
         if (reason || failures >= MAX_ATTEMPTS) {
-          await setStatus(id, { state: 'stopped', reason: reason ?? apiErrorMessage(error) });
+          await setStatus(id, {
+            state: 'stopped', reason: reason ?? apiErrorMessage(error), ...(isContentBlockedError(error) ? { blocked: true } : {}),
+          });
           log.error?.(`Generación detenida para ${id}: ${reason ?? apiErrorMessage(error)}`);
           return;
         }

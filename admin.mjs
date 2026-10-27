@@ -20,7 +20,7 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
  * Storage callbacks may be synchronous or asynchronous; deletion owns usage retention.
  */
 export function createAdminHandler({
-  adminPassword, trustProxy = false, auditFile, usage, listActiveStories, getStory,
+  adminPassword, trustProxy = false, auditFile, usage, geminiLog, listActiveStories, getStory,
   deleteStoryById, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
 }) {
   const secret = randomBytes(32);
@@ -218,6 +218,16 @@ export function createAdminHandler({
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': `attachment; filename="usage-${new Date().toISOString().slice(0, 10)}.csv"` });
         res.end('\ufeff' + fields.join(',') + '\r\n' + rows.join('\r\n') + '\r\n'); return true;
+      }
+      if (path === '/api/admin/gemini-log' && req.method === 'GET') {
+        const limit = url.searchParams.get('limit') ?? '100';
+        const failed = url.searchParams.get('failed');
+        const story = url.searchParams.get('story') ?? undefined;
+        if (!/^[1-9]\d{0,2}$/.test(limit) || Number(limit) > 500 || !['0', '1', null].includes(failed)
+          || (story !== undefined && !/^[A-Za-z0-9._-]{1,100}$/.test(story))) fail(400, 'Los filtros no son válidos.');
+        await audit('gemini_log_view', req);
+        return json(200, { enabled: Boolean(geminiLog?.enabled),
+          items: geminiLog ? await geminiLog.recent({ limit: Number(limit), onlyFailed: failed === '1', storyId: story }) : [] });
       }
       // Hands the owner key to the admin so an unfinished comic can be continued from the main page.
       const resume = /^\/api\/admin\/stories\/([^/]+)\/continue$/.exec(path);

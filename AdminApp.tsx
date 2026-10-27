@@ -1,15 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AdminAuthError, adminRequest, errorText } from './adminApi';
+import { AdminGeminiLog } from './AdminGeminiLog';
 import { AdminOverviewView } from './AdminOverview';
 import { AdminStories } from './AdminStories';
 import { AdminStoryDetailView } from './AdminStoryDetail';
 import { t } from './i18n';
 
-type View = { name: 'overview' } | { name: 'stories' } | { name: 'story'; id: string };
+type View = { name: 'overview' } | { name: 'stories' } | { name: 'log' } | { name: 'story'; id: string };
 
 function parseHash(): View {
     const hash = window.location.hash.replace(/^#\/?/, '');
     if (hash.startsWith('story/')) return { name: 'story', id: decodeURIComponent(hash.slice(6)) };
+    if (hash === 'log') return { name: 'log' };
     if (hash === 'stories') return { name: 'stories' };
     return { name: 'overview' };
 }
@@ -89,6 +91,7 @@ export function AdminApp() {
                 <nav aria-label={t('admin.nav')}>
                     <a href="#/" aria-current={active === 'overview' ? 'page' : undefined}>{t('admin.overview')}</a>
                     <a href="#/stories" aria-current={active === 'stories' ? 'page' : undefined}>{t('admin.comics')}</a>
+                    <a href="#/log" aria-current={active === 'log' ? 'page' : undefined}>{t('admin.geminiLog')}</a>
                     <a href="/api/admin/usage.csv" download>{t('admin.exportCsv')}</a>
                 </nav>
                 <button type="button" className="secondary" onClick={logout}>{t('admin.signOut')}</button>
@@ -96,6 +99,7 @@ export function AdminApp() {
             <main className="content">
                 {view.name === 'overview' && <AdminOverviewView onAuthLost={onAuthLost} />}
                 {view.name === 'stories' && <AdminStories onAuthLost={onAuthLost} />}
+                {view.name === 'log' && <AdminGeminiLog onAuthLost={onAuthLost} />}
                 {view.name === 'story' && <AdminStoryDetailView key={view.id} id={view.id} onAuthLost={onAuthLost} />}
             </main>
         </>

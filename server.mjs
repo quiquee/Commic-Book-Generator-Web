@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node
 import { pathToFileURL } from 'node:url';
 import { createUsageStore } from './usage.mjs';
 import { createGeminiProxy } from './geminiProxy.mjs';
+import { createGeminiLog } from './geminiLog.mjs';
 import { createAdminHandler } from './admin.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { createStoryWorker } from './storyWorker.mjs';
@@ -410,6 +411,8 @@ export function createAppServer({
   adminPassword,
   trustProxy = false,
   auditFile = join(process.cwd(), '.data', 'audit.log'),
+  geminiLogFile = join(process.cwd(), '.data', 'gemini.log'),
+  geminiLogLevel = 'all',
   upstreamTimeoutMs = 120000,
   // Comics are generated on the server (see storyWorker.mjs); off by default when there is no API key.
   backgroundGeneration,
@@ -657,14 +660,20 @@ export function createAppServer({
     }
   }
 
+  const geminiLog = createGeminiLog({
+    file: geminiLogFile,
+    level: ['off', 'errors', 'all'].includes(geminiLogLevel) ? geminiLogLevel : 'all',
+    sanitize: (text) => (geminiApiKey ? text.split(geminiApiKey).join('[REDACTED]') : text),
+  });
+
   const geminiProxy = createGeminiProxy({
-    usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
+    log: geminiLog, usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
     allowedModels: typeof allowedModels === 'string' ? allowedModels.split(',').map((model) => model.trim()).filter(Boolean) : allowedModels,
     dailyBudgetUsd, dailyTokenLimit, trustProxy, upstreamTimeoutMs,
   });
 
   const admin = createAdminHandler({
-    adminPassword, trustProxy, auditFile, usage, listActiveStories, getStory: getStoryOrNull,
+    adminPassword, trustProxy, auditFile, usage, geminiLog, listActiveStories, getStory: getStoryOrNull,
     resumeStory: (id) => worker?.start(id),
     deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
     dailyBudgetUsd, dailyTokenLimit, dev,
@@ -974,6 +983,29 @@ export function createAppServer({
       return;
     }
 
+    // Rewrites the instructions after Gemini refused the content, then restarts generation. Owner only.
+    if (segments.length === 4 && segments[3] === 'instructions' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (!isObject(body) || !exactKeys(body, ['instructions'])) fail(400, 'Las instrucciones no son válidas.');
+      const instructions = validateString(body.instructions, 'instructions', 2000, { optional: true }).trim();
+      if (!worker) fail(503, 'La generación de cómics no está disponible en este momento.');
+      await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (await participantRole(request, story) !== 'owner') fail(403, 'Solo quien creó la historia puede modificarla.');
+        if (story.generation?.state !== 'stopped') fail(409, 'La historia no está detenida.');
+        if (story.settings.genre === 'Custom' && !instructions) fail(400, 'El campo premise es obligatorio para el género Custom.');
+      });
+      await updateStoryRecord(id, (story) => {
+        if (story.settings.genre === 'Custom') story.settings.premise = instructions;
+        else story.settings.extraInstructions = instructions;
+        story.generation = { state: 'queued', at: Date.now() };
+      });
+      worker.start(id);
+      sendJson(response, 202, { started: true });
+      return;
+    }
+
     // Saves a browser push subscription so the owner or guest is told about decisions and the end.
     if (segments.length === 4 && segments[3] === 'subscriptions' && request.method === 'POST') {
       const body = await readJsonBody(request);
@@ -1271,6 +1303,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       server = createAppServer({
         dev, publicBaseUrl: process.env.PUBLIC_BASE_URL,
         geminiApiKey: process.env.GEMINI_API_KEY,
+        geminiLogLevel: process.env.GEMINI_LOG || undefined,
         geminiUpstream: process.env.GEMINI_UPSTREAM_URL,
         allowedModels: process.env.GEMINI_ALLOWED_MODELS,
         dailyBudgetUsd: Number(process.env.GEMINI_DAILY_BUDGET_USD ?? 0),

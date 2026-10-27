@@ -26,6 +26,8 @@ export interface GenerationStatus {
     pageIndex?: number;
     attempt?: number;
     reason?: string;
+    // Set when Gemini refused the content: retrying is pointless until the instructions change.
+    blocked?: boolean;
     at: number;
 }
 
@@ -192,6 +194,11 @@ export function submitChoice(id: string, auth: StoryAuth, faceId: string, choice
 // Asks the server to (re)start drawing the comic, e.g. after it stopped on an error.
 export function restartGeneration(id: string, auth: StoryAuth): Promise<{ started: boolean }> {
     return storyRequest(`/${id}/generate`, auth, { body: {} });
+}
+
+// Rewrites the story instructions after Gemini refused the content, and restarts the drawing.
+export function updateInstructions(id: string, auth: StoryAuth, instructions: string): Promise<{ started: boolean }> {
+    return storyRequest(`/${id}/instructions`, auth, { body: { instructions } });
 }
 
 // `url` is where the notification takes the reader back to (this same comic, with the same credentials).

@@ -88,9 +88,17 @@ export function apiErrorMessage(error: unknown): string {
     return raw;
 }
 
-// Errors that retrying cannot fix: spending limits and a server without an API key.
+// Gemini refused the content (safety filters and the like); the proxy reports it as CONTENIDO_BLOQUEADO.
+export const CONTENT_BLOCKED_MESSAGE = 'El generador ha rechazado el contenido. Modifica las instrucciones de la historia.';
+
+export function isContentBlockedError(error: unknown): boolean {
+    return apiErrorMessage(error).includes('CONTENIDO_BLOQUEADO');
+}
+
+// Errors that retrying cannot fix: content refusals, spending limits and a server without an API key.
 export function fatalGenerationMessage(error: unknown): string | null {
     const message = apiErrorMessage(error);
+    if (message.includes('CONTENIDO_BLOQUEADO')) return CONTENT_BLOCKED_MESSAGE;
     if (message.includes('LIMITE_DE_CONSUMO')) return message.replace(/^LIMITE_DE_CONSUMO:\s*/, '');
     if (message.includes('El servicio de generación no está configurado')) return message;
     return null;
@@ -113,7 +121,9 @@ function coreDriver(settings: StorySettings, tone: string): string {
     if (settings.genre === 'Custom') {
         return `STORY PREMISE: ${settings.premise || 'A totally unique, unpredictable adventure'}. (Follow this premise strictly over standard genre tropes).`;
     }
-    return `GENRE: ${settings.genre}. TONE: ${tone}.`;
+    // Instructions rewritten after a refusal (see /api/stories/:id/instructions) also steer the preset genres.
+    const extra = settings.extraInstructions?.trim() ? ` EXTRA INSTRUCTIONS: ${settings.extraInstructions.trim()}.` : '';
+    return `GENRE: ${settings.genre}. TONE: ${tone}.${extra}`;
 }
 
 // Produces a fixed "character bible" so every page prompt describes the same faces, outfits and palette.

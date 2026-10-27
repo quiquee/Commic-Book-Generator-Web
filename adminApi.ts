@@ -171,3 +171,22 @@ export const statusLabel = (status: StoryStatus) => t(({
 } as const)[status]);
 
 export const imageUrl = (storyId: string, which: string) => `/api/admin/stories/${storyId}/image/${which}`;
+
+export interface GeminiLogEntry {
+    ts: string;
+    scope: 'story' | 'draft';
+    scopeId: string;
+    model: string;
+    op: string;
+    httpStatus: number;
+    latencyMs: number;
+    ok: boolean;
+    blockReason?: string;
+    finishReason?: string;
+    error?: { code?: number; status?: string; message?: string; detail?: string };
+    safetyRatings?: { category: string; probability?: string; blocked?: boolean }[];
+    promptSafetyRatings?: { category: string; probability?: string; blocked?: boolean }[];
+    totalTokens?: number;
+    prompt: { text: string; images: number };
+    reply?: string;
+}
