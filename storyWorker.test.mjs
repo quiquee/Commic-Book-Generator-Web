@@ -51,7 +51,6 @@ async function startServer() {
     dataDir: join(dir, 'invitations'), storiesDir: join(dir, 'stories'), usageDir: join(dir, 'usage'),
     auditFile: join(dir, 'audit.log'), geminiLogFile: join(dir, 'gemini.log'), adminPassword: 'secret', pricingFile: join(dir, 'pricing.json'),
     geminiApiKey: 'TEST_KEY', geminiUpstream: `http://127.0.0.1:${upstream.address().port}`,
-    generationRetryDelayMs: 5,
     pushService: { publicKey: async () => 'PUBLIC', send: async (subscription, payload) => { sent.push(payload); return 'sent'; } },
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -150,13 +149,13 @@ test('the server draws a comic on its own, waits for the decision and notifies o
   assert.equal(sent.length, 2);
 });
 
-test('after repeated failures generation stops, and only the owner can restart it', async () => {
+test('the first Gemini error stops generation, and only the owner can restart it', async () => {
   failing = true;
   const { id, ownerToken } = await createComic();
   const read = async () => (await api(`/api/stories/${id}`, { token: ownerToken })).payload;
   const stopped = await until(read, (story) => story.generation?.state === 'stopped', 'parada por errores');
   assert.equal(stopped.generation.reason, 'Fallo simulado');
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 1);
 
   assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST' })).status, 401);
   failing = false;
@@ -171,6 +170,7 @@ test('refused content stops at once without retrying, is logged, and the owner c
   const stopped = await until(read, (story) => story.generation?.state === 'stopped', 'parada por contenido rechazado');
   assert.equal(calls.length, 1);
   assert.equal(stopped.generation.blocked, true);
+  assert.equal(stopped.generation.detail, 'PROHIBITED_CONTENT');
   assert.match(stopped.generation.reason, /rechazado el contenido/);
 
   const log = (await readFile(join(dir, 'gemini.log'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));

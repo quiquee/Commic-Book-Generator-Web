@@ -22,12 +22,14 @@ export interface StorySummary {
 
 // Progress of the server-side generator; null for comics it has not touched yet.
 export interface GenerationStatus {
-    state: 'queued' | 'styling' | 'generating' | 'retrying' | 'waiting' | 'finished' | 'stopped';
+    state: 'queued' | 'styling' | 'generating' | 'waiting' | 'finished' | 'stopped';
     pageIndex?: number;
     attempt?: number;
     reason?: string;
     // Set when Gemini refused the content: retrying is pointless until the instructions change.
     blocked?: boolean;
+    // Gemini's own reason for a refusal (e.g. PROHIBITED_CONTENT), shown next to the message.
+    detail?: string;
     at: number;
 }
 

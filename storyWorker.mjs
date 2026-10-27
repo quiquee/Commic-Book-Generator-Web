@@ -6,8 +6,6 @@ import {
 import { faceId, faceType, findFace, isStoryFinished, nextPageToGenerate, pendingDecision, previousImage } from './storyLogic.ts';
 import { DECISION_PAGES } from './types.ts';
 
-const MAX_ATTEMPTS = 5;
-
 // Re-encodes a generated image (data URL or bare base64) as a bounded JPEG, as the browser used to do.
 export async function toJpegBase64(image, maxDimension = 1024, quality = 85) {
   const data = image.includes(',') ? image.slice(image.indexOf(',') + 1) : image;
@@ -34,19 +32,12 @@ function context(story) {
  * aiFor(record) returns a GoogleGenAI client; notify(record, event) is told about 'decision' and 'finished'.
  */
 export function createStoryWorker({
-  getStory, updateStory, aiFor, notify = async () => {}, concurrency = 2, retryDelayMs = 3000, log = console,
+  getStory, updateStory, aiFor, notify = async () => {}, concurrency = 2, log = console,
 }) {
   const queue = [];
   const running = new Set();
   const rerun = new Set();
-  const sleepers = new Set();
   let stopped = false;
-
-  const sleep = (ms) => new Promise((resolve) => {
-    const timer = setTimeout(() => { sleepers.delete(entry); resolve(); }, ms);
-    const entry = { timer, resolve };
-    sleepers.add(entry);
-  });
 
   const setStatus = (id, generation) => updateStory(id, (story) => {
     story.generation = { ...generation, at: Date.now() };
@@ -97,7 +88,6 @@ export function createStoryWorker({
   }
 
   async function process(id) {
-    let failures = 0;
     while (!stopped) {
       let story = await getStory(id);
       if (!story) return;
@@ -136,21 +126,17 @@ export function createStoryWorker({
         }
         await setStatus(id, { state: 'generating', pageIndex: next });
         await generatePage(ai, story, next);
-        failures = 0;
       } catch (error) {
         if (stopped) return;
-        failures++;
+        // The first error stops the comic and is shown to the reader: retrying a refusal wastes money and
+        // anything else is for the owner to retry or fix on purpose.
         const reason = fatalGenerationMessage(error)
-          ?? (isApiKeyError(error) ? 'La clave de la API no es válida.' : null);
-        if (reason || failures >= MAX_ATTEMPTS) {
-          await setStatus(id, {
-            state: 'stopped', reason: reason ?? apiErrorMessage(error), ...(isContentBlockedError(error) ? { blocked: true } : {}),
-          });
-          log.error?.(`Generación detenida para ${id}: ${reason ?? apiErrorMessage(error)}`);
-          return;
-        }
-        await setStatus(id, { state: 'retrying', attempt: failures, reason: apiErrorMessage(error) });
-        await sleep(retryDelayMs * failures);
+          ?? (isApiKeyError(error) ? 'La clave de la API no es válida.' : null) ?? apiErrorMessage(error);
+        const blocked = isContentBlockedError(error);
+        const detail = blocked ? /CONTENIDO_BLOQUEADO:\s*(\S+)/.exec(apiErrorMessage(error))?.[1] : undefined;
+        await setStatus(id, { state: 'stopped', reason, ...(blocked ? { blocked: true } : {}), ...(detail ? { detail } : {}) });
+        log.error?.(`Generación detenida para ${id}: ${reason}${detail ? ` (${detail})` : ''}`);
+        return;
       }
     }
   }
@@ -181,8 +167,6 @@ export function createStoryWorker({
     stop() {
       stopped = true;
       queue.length = 0;
-      for (const entry of sleepers) { clearTimeout(entry.timer); entry.resolve(); }
-      sleepers.clear();
     },
   };
 }

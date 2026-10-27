@@ -417,7 +417,6 @@ export function createAppServer({
   // Comics are generated on the server (see storyWorker.mjs); off by default when there is no API key.
   backgroundGeneration,
   generationConcurrency = 2,
-  generationRetryDelayMs = 3000,
   pushDir,
   pushSubject,
   pushService,
@@ -647,7 +646,6 @@ export function createAppServer({
     }),
     notify: notifySubscribers,
     concurrency: generationConcurrency,
-    retryDelayMs: generationRetryDelayMs,
   }) : null;
 
   // On startup, picks up every unfinished comic that is not waiting for a decision or stopped by an error
