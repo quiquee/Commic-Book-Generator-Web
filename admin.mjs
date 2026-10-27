@@ -20,7 +20,7 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
  * Storage callbacks may be synchronous or asynchronous; deletion owns usage retention.
  */
 export function createAdminHandler({
-  adminPassword, trustProxy = false, auditFile, usage, listActiveStories, getStory,
+  adminPassword, trustProxy = false, auditFile, usage, geminiLog, listActiveStories, getStory,
   deleteStoryById, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
 }) {
   const secret = randomBytes(32);
@@ -66,6 +66,8 @@ export function createAdminHandler({
       completedPages, totalPages: 12,
       status: deleted ? 'deleted' : completedPages >= 12 ? 'complete' : 'in_progress',
       hasFriend: record.hasFriend ?? !!record.friend, usage: totals ?? emptyTotals(),
+      shares: record.sharing?.shares ?? 0, opens: record.sharing?.opens ?? 0,
+      ...pick(record.sharing, ['lastSharedAt', 'lastOpenedAt']),
     };
   }
   async function allStories() {
@@ -114,7 +116,8 @@ export function createAdminHandler({
   return async function handle(req, res, url = new URL(req.url, 'http://localhost')) {
     const path = url.pathname;
     const api = path.startsWith('/api/admin');
-    const page = ['/admin', '/admin/', '/admin.html'].includes(path);
+    // Any /admin/... address is a page too: known names jump to their view, the rest to the panel itself.
+    const page = ['/admin', '/admin/', '/admin.html'].includes(path) || path.startsWith('/admin/');
     if (!api && !page) return false;
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -125,10 +128,21 @@ export function createAdminHandler({
       return true;
     };
     try {
-      if (!adminPassword) return json(404, { error: 'Panel de administración deshabilitado.' });
+      if (!adminPassword) {
+        if (!page) return json(404, { error: 'Panel de administración deshabilitado.' });
+        // Browsers navigating here get a page, not a JSON file some of them would offer to download.
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'inline' });
+        res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin</title>'
+          + '<p style="font-family:sans-serif;padding:2rem">Panel de administración deshabilitado.</p>');
+        return true;
+      }
       if (page) {
         if (!['GET', 'HEAD'].includes(req.method)) fail(405, 'Método no permitido.');
-        if (path === '/admin/') { res.writeHead(302, { Location: '/admin' }); res.end(); return true; }
+        if (path.startsWith('/admin/')) {
+          const target = { '/admin/comics': '/admin#/stories', '/admin/stories': '/admin#/stories', '/admin/log': '/admin#/log' }[path.replace(/\/$/, '')] ?? '/admin';
+          res.writeHead(302, { Location: target }); res.end(); return true;
+        }
+        res.setHeader('Content-Disposition', 'inline');
         if (!dev) {
           res.setHeader('Content-Security-Policy', CSP);
           res.setHeader('X-Frame-Options', 'DENY');
@@ -203,7 +217,7 @@ export function createAdminHandler({
       }
       if (path === '/api/admin/usage.csv' && req.method === 'GET') {
         const fields = ['id', 'title', 'host', 'guest', 'status', 'createdAt', 'deletedAt', 'calls', 'errors',
-          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd'];
+          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd', 'shares', 'opens'];
         const cell = (value) => {
           let text = String(value ?? '');
           if (/^[=+\-@]/.test(text) || /^[\t\r\n]/.test(text) || /^\s+[=+\-@]/.test(text)) text = "'" + text;
@@ -218,6 +232,16 @@ export function createAdminHandler({
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': `attachment; filename="usage-${new Date().toISOString().slice(0, 10)}.csv"` });
         res.end('\ufeff' + fields.join(',') + '\r\n' + rows.join('\r\n') + '\r\n'); return true;
+      }
+      if (path === '/api/admin/gemini-log' && req.method === 'GET') {
+        const limit = url.searchParams.get('limit') ?? '100';
+        const failed = url.searchParams.get('failed');
+        const story = url.searchParams.get('story') ?? undefined;
+        if (!/^[1-9]\d{0,2}$/.test(limit) || Number(limit) > 500 || !['0', '1', null].includes(failed)
+          || (story !== undefined && !/^[A-Za-z0-9._-]{1,100}$/.test(story))) fail(400, 'Los filtros no son válidos.');
+        await audit('gemini_log_view', req);
+        return json(200, { enabled: Boolean(geminiLog?.enabled),
+          items: geminiLog ? await geminiLog.recent({ limit: Number(limit), onlyFailed: failed === '1', storyId: story }) : [] });
       }
       // Hands the owner key to the admin so an unfinished comic can be continued from the main page.
       const resume = /^\/api\/admin\/stories\/([^/]+)\/continue$/.exec(path);
@@ -265,7 +289,7 @@ export function createAdminHandler({
           const summary = item({ ...source, id }, accounting?.totals, !record);
           return json(200, {
             ...pick(summary, ['id', 'title', 'hostName', 'guestName', 'createdAt', 'updatedAt', 'deletedAt',
-              'deletedBy', 'status', 'completedPages', 'totalPages']),
+              'deletedBy', 'status', 'completedPages', 'totalPages', 'shares', 'opens', 'lastSharedAt', 'lastOpenedAt']),
             ...pick(source, ['tone', 'styleGuide', 'invitationId']),
             ...(source.settings ? { settings: pick(source.settings, ['genre', 'language', 'premise', 'richMode']) } : {}),
             faces: !record ? [] : (record.faces ?? []).map((face) => ({

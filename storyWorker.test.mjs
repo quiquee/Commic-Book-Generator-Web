@@ -15,6 +15,7 @@ let upstream;
 let server;
 let base;
 let failing = false;
+let blocked = false;
 let calls = [];
 let sent = [];
 
@@ -27,6 +28,10 @@ async function startUpstream() {
     const prompt = JSON.stringify(body.contents);
     calls.push(req.url);
     res.setHeader('content-type', 'application/json');
+    if (blocked) {
+      res.end(JSON.stringify({ promptFeedback: { blockReason: 'PROHIBITED_CONTENT' }, usageMetadata: { totalTokenCount: 5 } }));
+      return;
+    }
     if (failing) {
       res.statusCode = 500;
       res.end(JSON.stringify({ error: { code: 500, message: 'Fallo simulado', status: 'INTERNAL' } }));
@@ -44,9 +49,8 @@ async function startUpstream() {
 async function startServer() {
   server = createAppServer({
     dataDir: join(dir, 'invitations'), storiesDir: join(dir, 'stories'), usageDir: join(dir, 'usage'),
-    auditFile: join(dir, 'audit.log'), pricingFile: join(dir, 'pricing.json'),
+    auditFile: join(dir, 'audit.log'), geminiLogFile: join(dir, 'gemini.log'), adminPassword: 'secret', pricingFile: join(dir, 'pricing.json'),
     geminiApiKey: 'TEST_KEY', geminiUpstream: `http://127.0.0.1:${upstream.address().port}`,
-    generationRetryDelayMs: 5,
     pushService: { publicKey: async () => 'PUBLIC', send: async (subscription, payload) => { sent.push(payload); return 'sent'; } },
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -79,6 +83,7 @@ const done = (story) => story.faces.filter((face) => face.imageUrl && !face.isLo
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'comic-worker-test-'));
   failing = false;
+  blocked = false;
   calls = [];
   sent = [];
   await startUpstream();
@@ -144,16 +149,107 @@ test('the server draws a comic on its own, waits for the decision and notifies o
   assert.equal(sent.length, 2);
 });
 
-test('after repeated failures generation stops, and only the owner can restart it', async () => {
+test('the first Gemini error stops generation, and only the owner can restart it', async () => {
   failing = true;
   const { id, ownerToken } = await createComic();
   const read = async () => (await api(`/api/stories/${id}`, { token: ownerToken })).payload;
   const stopped = await until(read, (story) => story.generation?.state === 'stopped', 'parada por errores');
   assert.equal(stopped.generation.reason, 'Fallo simulado');
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 1);
 
   assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST' })).status, 401);
   failing = false;
   assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST', token: ownerToken })).status, 202);
   await until(read, (story) => story.generation?.state === 'waiting', 'reanudación manual');
+});
+
+test('refused content stops at once without retrying, is logged, and the owner can rewrite the instructions', async () => {
+  blocked = true;
+  const { id, ownerToken } = await createComic();
+  const read = async () => (await api(`/api/stories/${id}`, { token: ownerToken })).payload;
+  const stopped = await until(read, (story) => story.generation?.state === 'stopped', 'parada por contenido rechazado');
+  assert.equal(calls.length, 1);
+  assert.equal(stopped.generation.blocked, true);
+  assert.equal(stopped.generation.detail, 'PROHIBITED_CONTENT');
+  assert.match(stopped.generation.reason, /rechazado el contenido/);
+
+  const log = (await readFile(join(dir, 'gemini.log'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(log.length, 1);
+  assert.equal(log[0].blockReason, 'PROHIBITED_CONTENT');
+  assert.equal(log[0].ok, false);
+  assert.equal(log[0].scopeId, id);
+  assert.match(log[0].prompt.text, /Una idea/);
+  assert.ok(!JSON.stringify(log[0]).includes('TEST_KEY'));
+
+  const login = await fetch(`${base}/api/admin/login`, { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-admin-request': '1' }, body: JSON.stringify({ password: 'secret' }) });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const shown = await (await fetch(`${base}/api/admin/gemini-log?failed=1`, { headers: { cookie } })).json();
+  assert.equal(shown.items[0].blockReason, 'PROHIBITED_CONTENT');
+  assert.equal((await fetch(`${base}/api/admin/gemini-log?limit=0`, { headers: { cookie } })).status, 400);
+  assert.equal((await fetch(`${base}/api/admin/gemini-log`)).status, 401);
+
+  const edit = (token, instructions) => api(`/api/stories/${id}/instructions`, { method: 'POST', token, body: { instructions } });
+  assert.equal((await edit(undefined, 'Algo nuevo')).status, 401);
+  assert.equal((await edit(ownerToken, '')).status, 400);
+  blocked = false;
+  assert.equal((await edit(ownerToken, 'Una aventura en el mar')).status, 202);
+  const finished = await until(read, (story) => story.generation?.state === 'waiting', 'reanudación tras cambiar instrucciones');
+  assert.equal(finished.settings.premise, 'Una aventura en el mar');
+  assert.equal((await edit(ownerToken, 'Otra vez')).status, 409);
+});
+
+test('the share link lets anyone read the comic but nothing else, and only participants can create it', async () => {
+  const { id, ownerToken } = await createComic();
+  const read = (token) => api(`/api/stories/${id}`, { token });
+  const share = (token) => api(`/api/stories/${id}/share`, { method: 'POST', token, body: {} });
+
+  assert.equal((await share(undefined)).status, 401);
+  assert.equal((await share('nope')).status, 401);
+  const first = await share(ownerToken);
+  assert.equal(first.status, 200);
+  assert.match(first.payload.token, /^[A-Za-z0-9_-]{30,}$/);
+  assert.equal((await share(ownerToken)).payload.token, first.payload.token);
+
+  const reader = first.payload.token;
+  const seen = await read(reader);
+  assert.equal(seen.status, 200);
+  assert.equal(seen.payload.role, 'reader');
+  assert.equal(seen.payload.invitationId, undefined);
+  assert.ok(!JSON.stringify(seen.payload).includes(ownerToken));
+
+  assert.equal((await share(reader)).status, 403);
+  assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST', token: reader, body: {} })).status, 403);
+  assert.equal((await api(`/api/stories/${id}/instructions`, { method: 'POST', token: reader, body: { instructions: 'x' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}/choices`, { method: 'POST', token: reader, body: { faceId: 'page-3', choice: 'x' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}`, { method: 'PATCH', token: reader, body: { title: 'Mío' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}`, { method: 'DELETE', token: reader })).status, 403);
+  assert.equal((await read(ownerToken)).payload.title, 'Cómic de prueba');
+});
+
+test('the admin sees how many times a comic was shared and how many times the shared link was opened', async () => {
+  const { id, ownerToken } = await createComic();
+  const share = () => api(`/api/stories/${id}/share`, { method: 'POST', token: ownerToken, body: {} });
+  const reader = (await share()).payload.token;
+  await share();
+  await api(`/api/stories/${id}`, { token: reader });
+  await api(`/api/stories/${id}`, { token: reader });
+  await api(`/api/stories/${id}?after=0`, { token: reader });
+  await api(`/api/stories/${id}`, { token: ownerToken });
+
+  const login = await fetch(`${base}/api/admin/login`, { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-admin-request': '1' }, body: JSON.stringify({ password: 'secret' }) });
+  const headers = { cookie: login.headers.get('set-cookie').split(';')[0] };
+  const list = await (await fetch(`${base}/api/admin/stories`, { headers })).json();
+  const entry = list.items.find((item) => item.id === id);
+  assert.equal(entry.shares, 2);
+  assert.equal(entry.opens, 2);
+  const detail = await (await fetch(`${base}/api/admin/stories/${id}`, { headers })).json();
+  assert.equal(detail.shares, 2);
+  assert.equal(detail.opens, 2);
+  assert.ok(detail.lastSharedAt > 0 && detail.lastOpenedAt > 0);
+  assert.ok(!JSON.stringify(detail).includes(reader));
+  const csv = await (await fetch(`${base}/api/admin/usage.csv`, { headers })).text();
+  assert.match(csv.split('\r\n')[0], /,shares,opens$/);
+  assert.match(csv.split('\r\n').find((line) => line.includes(id)), /,"2","2"$/);
 });

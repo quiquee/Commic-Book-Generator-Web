@@ -17,7 +17,7 @@ interface BookProps {
     onOpenBook: () => void;
     onDownload: () => void;
     onReset: () => void;
-    onShare?: (face: ComicFace) => void;
+    onShare?: () => void;
 }
 
 export const Book: React.FC<BookProps> = (props) => {

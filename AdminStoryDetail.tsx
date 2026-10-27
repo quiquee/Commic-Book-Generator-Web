@@ -133,6 +133,8 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                     {story.updatedAt !== undefined && <><dt>{t('admin.sort.updated')}</dt><dd>{formatDate(story.updatedAt)}</dd></>}
                     {story.deletedAt && <><dt>{t('admin.status.deleted')}</dt><dd>{formatDate(story.deletedAt)} ({story.deletedBy === 'admin' ? t('admin.byAdmin') : t('admin.byOwner')})</dd></>}
                     <dt>{t('admin.pages')}</dt><dd>{story.completedPages}/{story.totalPages}</dd>
+                    <dt>{t('admin.shares')}</dt><dd>{formatNumber(story.shares ?? 0)}{story.lastSharedAt ? ` · ${formatDate(story.lastSharedAt)}` : ''}</dd>
+                    <dt>{t('admin.opens')}</dt><dd>{formatNumber(story.opens ?? 0)}{story.lastOpenedAt ? ` · ${formatDate(story.lastOpenedAt)}` : ''}</dd>
                     {story.settings && <><dt>{t('story.genreLabel')}</dt><dd>{genreLabel(story.settings.genre)}</dd><dt>{t('admin.language')}</dt><dd>{story.settings.language}</dd></>}
                     {story.settings?.premise && <><dt>{t('admin.premise')}</dt><dd>{story.settings.premise}</dd></>}
                     {story.tone && <><dt>{t('admin.tone')}</dt><dd>{story.tone}</dd></>}

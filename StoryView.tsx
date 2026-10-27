@@ -3,8 +3,8 @@ import jsPDF from 'jspdf';
 import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
-import { errorMessage } from './invitations';
-import { fetchStory, fetchStoryDelta, restartGeneration, submitChoice, type StoryAuth, type StoryDocument } from './stories';
+import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
+import { createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument } from './stories';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
@@ -26,6 +26,10 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const [notice, setNotice] = useState('');
     // «Back to menu» at the end of the comic shows the credits before leaving.
     const [showCredits, setShowCredits] = useState(false);
+    // Dialog to rewrite the instructions after Gemini refused the content.
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [saving, setSaving] = useState(false);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
@@ -108,9 +112,36 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         }
     };
 
+    const currentInstructions = story
+        ? (story.settings.genre === 'Custom' ? story.settings.premise : story.settings.extraInstructions) ?? ''
+        : '';
+    const openInstructions = () => { setDraft(currentInstructions); setEditing(true); };
+
+    const saveInstructions = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setSaving(true);
+        setError('');
+        try {
+            await updateInstructions(storyId, auth, draft.trim());
+            updateStory(current => ({
+                ...current,
+                settings: current.settings.genre === 'Custom'
+                    ? { ...current.settings, premise: draft.trim() }
+                    : { ...current.settings, extraInstructions: draft.trim() },
+                generation: { state: 'queued', at: Date.now() }
+            }));
+            setEditing(false);
+        } catch (failure) {
+            setError(t('view.instructionsFailed', { reason: errorMessage(failure) }));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const choose = async (pageIndex: number, choice: string) => {
         const face = story && findFace(story.faces, pageIndex);
         if (!face || face.resolvedChoice) return;
+        if (auth.kind === 'reader') { setNotice(t('view.readOnly')); return; }
         applyFace({ ...face, resolvedChoice: choice });
         try {
             const result = await submitChoice(storyId, auth, face.id, choice);
@@ -142,23 +173,22 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         doc.save(`${titleSlug(story.title)}.pdf`);
     };
 
-    const sharePage = async (face: ComicFace) => {
-        if (!face.imageUrl || !story) return;
-        const label = face.type === 'cover' ? t('file.cover') : face.type === 'back_cover' ? t('file.backCover') : t('file.page', { page: face.pageIndex ?? '' });
+    // Shares a link anyone can open to read the comic (a reader re-shares the link they came with).
+    const shareLink = async () => {
+        if (!story) return;
         try {
-            const blob = await (await fetch(face.imageUrl)).blob();
-            const file = new File([blob], `${titleSlug(story.title)}-${label}.jpg`, { type: 'image/jpeg' });
-            const share = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
-            if (share.share && share.canShare?.({ files: [file] })) {
-                await share.share({ files: [file], title: story.title, text: `${story.title} – ${label}` });
+            const baseUrl = await fetchPublicBaseUrl().catch(() => null);
+            const url = auth.kind === 'reader' ? readLinkUrl(baseUrl, storyId, auth.token) : await createReadLink(storyId, auth, baseUrl);
+            if (navigator.share) {
+                await navigator.share({ title: story.title, text: t('view.shareText', { title: story.title }), url });
                 return;
             }
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = file.name;
-            link.click();
-            URL.revokeObjectURL(link.href);
-            setNotice(t('view.shareDownloaded'));
+            try {
+                await copyText(url);
+                setNotice(t('view.shareCopied'));
+            } catch {
+                setNotice(t('view.shareManual', { url }));
+            }
         } catch (failure) {
             if (!isAbort(failure)) setError(t('view.shareFailed', { reason: errorMessage(failure) }));
         }
@@ -182,8 +212,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
             case 'generating': return generation.pageIndex === 0 ? t('status.cover')
                 : generation.pageIndex === TOTAL_PAGES ? t('status.backCover')
                 : t('status.page', { page: generation.pageIndex ?? '', total: TOTAL_PAGES - 1 });
-            case 'retrying': return t('status.retrying', { attempt: generation.attempt ?? 1 });
-            case 'stopped': return t('status.stopped', { reason: localizeText(generation.reason ?? '') });
+            case 'stopped': return t('status.stopped', { reason: `${localizeText(generation.reason ?? '')}${generation.detail ? ` (${generation.detail})` : ''}` });
             default: return t('status.queued', { done: story.completedPages, total: TOTAL_PAGES + 1 });
         }
     })();
@@ -195,12 +224,17 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         <>
             <div className="fixed top-2 right-2 z-[500] flex flex-wrap justify-end gap-2 max-w-[70vw]">
                 <button type="button" onClick={downloadPDF} disabled={!hasPages} className="comic-btn bg-blue-500 text-white px-3 py-2 text-lg disabled:bg-gray-400">{t('view.downloadPdf')}</button>
-                {isOwner && story?.generation?.state === 'stopped' && <button type="button" onClick={retry} className="comic-btn bg-yellow-400 px-3 py-2 text-lg">{t('view.retry')}</button>}
             </div>
             <div className="fixed top-16 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
                 {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
                 {inProgress && !pendingDecision(story!.faces) && <p className="text-xs text-white bg-black/60 px-2 py-0.5">{t('view.canClose')}</p>}
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
+                {isOwner && story?.generation?.state === 'stopped' && (
+                    <div className="pointer-events-auto flex flex-wrap justify-center gap-2 mt-2">
+                        <button type="button" onClick={openInstructions} className="comic-btn bg-red-500 text-white px-3 py-2 text-lg">{t('view.editInstructions')}</button>
+                        <button type="button" onClick={retry} className="comic-btn bg-yellow-400 px-3 py-2 text-lg">{t('view.retry')}</button>
+                    </div>
+                )}
                 {error && <p role="alert" className="pointer-events-auto text-sm bg-white border-2 border-red-800 text-red-800 px-3 py-1">{error} <button type="button" className="underline ml-1" onClick={() => setError('')}>{t('common.close')}</button></p>}
             </div>
             {story && <Book
@@ -213,10 +247,24 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onOpenBook={() => setCurrentSheetIndex(1)}
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
-                onShare={sharePage}
+                onShare={shareLink}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
-            {story && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
+            {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
+            {editing && (
+                <div role="dialog" aria-modal="true" aria-labelledby="instructions-title" className="fixed inset-0 z-[700] bg-black/70 flex items-center justify-center p-4">
+                    <form onSubmit={saveInstructions} className="bg-white border-4 border-black p-4 w-full max-w-lg flex flex-col gap-3">
+                        <h2 id="instructions-title" className="font-comic text-2xl">{t('view.instructionsTitle')}</h2>
+                        <p className="text-sm">{t('view.instructionsHint')}</p>
+                        <textarea aria-label={t('view.instructionsLabel')} value={draft} onChange={event => setDraft(event.target.value)}
+                            maxLength={2000} rows={6} autoFocus className="border-2 border-black p-2 w-full" />
+                        <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setEditing(false)} className="comic-btn bg-gray-200 px-3 py-2">{t('view.instructionsCancel')}</button>
+                            <button type="submit" disabled={saving || (story?.settings.genre === 'Custom' && !draft.trim())} className="comic-btn bg-yellow-400 px-3 py-2 disabled:bg-gray-400">{t('view.instructionsSave')}</button>
+                        </div>
+                    </form>
+                </div>
+            )}
             {showCredits && <Credits onDone={onExit} />}
         </>
     );

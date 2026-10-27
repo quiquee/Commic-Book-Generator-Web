@@ -7,6 +7,8 @@ export interface StorySettings {
     language: string;
     premise: string;
     richMode: boolean;
+    // Extra guidance for the preset genres, written after Gemini refused the content (Custom edits `premise`).
+    extraInstructions?: string;
 }
 
 export interface InvitationResponse {

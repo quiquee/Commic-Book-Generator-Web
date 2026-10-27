@@ -15,6 +15,9 @@ export default defineConfig({
     // Live-reload port follows PORT (7000 -> Vite's default 24678), so copies on other ports do not clash.
     hmr: { port: Number(process.env.PORT || 7000) + 17678 },
     allowedHosts: ['mundoscruzados.com','bicho','comic.hcpartners.ch','localhost'],
+    // The dev server serves any file under the project root: keep Vite's defaults and add the data folder
+    // (comics, invitations, keys, audit log). server.mjs blocks these paths too.
+    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.data/**'] },
   },
   plugins: [react()],
   build: {

@@ -300,7 +300,8 @@ const App: React.FC = () => {
     if (!route.story) return null;
     if (route.join && route.token) return { kind: 'guest', invitationId: route.join, token: route.token };
     const token = findOwnerToken(route.story);
-    return token ? { kind: 'owner', token } : null;
+    if (token) return { kind: 'owner', token };
+    return route.read ? { kind: 'reader', token: route.read } : null;
   })();
 
   const openGuestStory = (storyId: string) => navigate({ join: route.join, token: route.token, story: storyId });

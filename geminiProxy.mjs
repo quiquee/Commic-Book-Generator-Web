@@ -1,11 +1,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { blockedReason, describeCall } from './geminiLog.mjs';
 
 const DEFAULT_MODELS = ['gemini-3.8-flash', 'gemini-nano-banana-2.1'];
 const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_BODY = 12 * 1024 * 1024;
 const statuses = { 400: 'INVALID_ARGUMENT', 401: 'UNAUTHENTICATED', 403: 'PERMISSION_DENIED', 404: 'NOT_FOUND',
   405: 'METHOD_NOT_ALLOWED', 413: 'RESOURCE_EXHAUSTED', 429: 'RESOURCE_EXHAUSTED',
-  500: 'INTERNAL', 502: 'UNAVAILABLE', 503: 'UNAVAILABLE', 504: 'DEADLINE_EXCEEDED' };
+  422: 'CONTENT_BLOCKED', 500: 'INTERNAL', 502: 'UNAVAILABLE', 503: 'UNAVAILABLE', 504: 'DEADLINE_EXCEEDED' };
 
 function tokenMatches(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string' || !actual || !expected) return false;
@@ -47,7 +48,7 @@ export function createGeminiProxy({
   usage, loadStory, geminiApiKey,
   geminiUpstream = 'https://generativelanguage.googleapis.com',
   allowedModels = DEFAULT_MODELS, dailyBudgetUsd, dailyTokenLimit, trustProxy = false,
-  upstreamTimeoutMs = 120_000,
+  upstreamTimeoutMs = 120_000, log,
 }) {
   if ((geminiApiKey !== undefined && typeof geminiApiKey !== 'string')
     || !Array.isArray(allowedModels) || allowedModels.length === 0
@@ -135,7 +136,10 @@ export function createGeminiProxy({
       const start = performance.now();
       let httpStatus = 502;
       let payload;
+      let upstreamPayload;
       let ok = false;
+      let blockReason = null;
+      let failure;
       try {
         const response = await fetch(upstream, {
           method: 'POST',
@@ -154,20 +158,35 @@ export function createGeminiProxy({
         }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Respuesta no válida del servicio de generación.');
         ok = response.ok && !payload.error;
-        if (!ok) {
+        upstreamPayload = payload;
+        // Content refusals come back as 200 without content. Retrying cannot help, so they become a
+        // distinct error the worker and the interface treat as final.
+        blockReason = ok ? blockedReason(payload) : null;
+        if (blockReason) {
+          httpStatus = 422;
+          payload = { error: { code: 422, message: `CONTENIDO_BLOQUEADO: ${blockReason}`, status: 'CONTENT_BLOCKED' } };
+        } else if (!ok) {
           if (httpStatus < 400) httpStatus = 502;
           payload = { error: { code: httpStatus, message: typeof payload.error?.message === 'string'
             ? payload.error.message : 'Error del servicio de generación.',
           status: typeof payload.error?.status === 'string' ? payload.error.status : statuses[httpStatus] ?? 'UNKNOWN' } };
         }
-      } catch {
+      } catch (cause) {
+        failure = cause;
         httpStatus = controller.signal.aborted ? 504 : 502;
         payload = { error: { code: httpStatus, message: httpStatus === 504
           ? 'El generador ha tardado demasiado en responder.' : 'No se pudo obtener respuesta del generador.', status: statuses[httpStatus] } };
       } finally {
         clearTimeout(timer);
       }
-      await usage.record(scope, { model, op, ok, httpStatus, latencyMs: performance.now() - start, response: payload });
+      const latencyMs = performance.now() - start;
+      await usage.record(scope, { model, op, ok, httpStatus, latencyMs, response: upstreamPayload ?? payload });
+      if (log) {
+        const entry = describeCall({ scope, model, op, httpStatus, latencyMs, ok: ok && !blockReason, body,
+          payload: upstreamPayload ?? payload, blockReason });
+        if (failure) entry.error = { ...entry.error, detail: String(failure?.message ?? failure).slice(0, 500) };
+        await log.record(entry);
+      }
       send(res, httpStatus, payload);
     } catch (cause) {
       error(res, cause.status === 413 ? 413 : cause.status === 400 ? 400 : 500,

@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node
 import { pathToFileURL } from 'node:url';
 import { createUsageStore } from './usage.mjs';
 import { createGeminiProxy } from './geminiProxy.mjs';
+import { createGeminiLog } from './geminiLog.mjs';
 import { createAdminHandler } from './admin.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { createStoryWorker } from './storyWorker.mjs';
@@ -75,6 +76,8 @@ function fail(status, message) {
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+const READ_ONLY = 'Esta acción no está disponible con el enlace de lectura.';
 
 function exactKeys(value, keys) {
   return isObject(value)
@@ -375,6 +378,12 @@ async function serveStatic(request, response, root) {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   const rootPath = resolve(root);
   let file = await getStaticPath(rootPath, pathname);
+  // A bundle that is gone (e.g. a cached page from before a rebuild) must not be answered with the app page.
+  if (!file && pathname.startsWith('/assets/')) {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found');
+    return;
+  }
   if (!file) file = await getStaticPath(rootPath, '/index.html');
   if (!file) {
     sendJson(response, 404, { error: 'No se encontró la aplicación.' });
@@ -410,11 +419,12 @@ export function createAppServer({
   adminPassword,
   trustProxy = false,
   auditFile = join(process.cwd(), '.data', 'audit.log'),
+  geminiLogFile = join(process.cwd(), '.data', 'gemini.log'),
+  geminiLogLevel = 'all',
   upstreamTimeoutMs = 120000,
   // Comics are generated on the server (see storyWorker.mjs); off by default when there is no API key.
   backgroundGeneration,
   generationConcurrency = 2,
-  generationRetryDelayMs = 3000,
   pushDir,
   pushSubject,
   pushService,
@@ -569,6 +579,7 @@ export function createAppServer({
       deletedAt: Date.now(),
       completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
       deletedBy,
+      ...(story.sharing ? { sharing: story.sharing } : {}),
     });
     if (story.invitationId) {
       await prepareStorage();
@@ -644,7 +655,6 @@ export function createAppServer({
     }),
     notify: notifySubscribers,
     concurrency: generationConcurrency,
-    retryDelayMs: generationRetryDelayMs,
   }) : null;
 
   // On startup, picks up every unfinished comic that is not waiting for a decision or stopped by an error
@@ -657,14 +667,20 @@ export function createAppServer({
     }
   }
 
+  const geminiLog = createGeminiLog({
+    file: geminiLogFile,
+    level: ['off', 'errors', 'all'].includes(geminiLogLevel) ? geminiLogLevel : 'all',
+    sanitize: (text) => (geminiApiKey ? text.split(geminiApiKey).join('[REDACTED]') : text),
+  });
+
   const geminiProxy = createGeminiProxy({
-    usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
+    log: geminiLog, usage, loadStory: getStoryOrNull, geminiApiKey, geminiUpstream,
     allowedModels: typeof allowedModels === 'string' ? allowedModels.split(',').map((model) => model.trim()).filter(Boolean) : allowedModels,
     dailyBudgetUsd, dailyTokenLimit, trustProxy, upstreamTimeoutMs,
   });
 
   const admin = createAdminHandler({
-    adminPassword, trustProxy, auditFile, usage, listActiveStories, getStory: getStoryOrNull,
+    adminPassword, trustProxy, auditFile, usage, geminiLog, listActiveStories, getStory: getStoryOrNull,
     resumeStory: (id) => worker?.start(id),
     deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
     dailyBudgetUsd, dailyTokenLimit, dev,
@@ -694,6 +710,8 @@ export function createAppServer({
     const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? '');
     if (!match) fail(401, 'No tienes autorización para esta historia.');
     if (tokenMatches(match[1], story.ownerToken)) return 'owner';
+    // Anyone holding the link from the back-cover Share button can read the comic, nothing else.
+    if (typeof story.readToken === 'string' && tokenMatches(match[1], story.readToken)) return 'reader';
     if (story.invitationId) {
       let invitation;
       try {
@@ -837,6 +855,11 @@ export function createAppServer({
         await prepareStoryStorage();
         const story = await loadStory(id);
         const role = await participantRole(request, story);
+        // A reader loading the comic (not the updates the page polls for) counts as one open of the link.
+        if (role === 'reader' && !hasAfter) {
+          story.sharing = { ...story.sharing, opens: (story.sharing?.opens ?? 0) + 1, lastOpenedAt: Date.now() };
+          await saveStory(story);
+        }
         return {
           id: story.id,
           title: story.title,
@@ -930,7 +953,7 @@ export function createAppServer({
       const result = await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        await participantRole(request, story);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
         const face = story.faces.find((item) => item.id === body.faceId);
         if (!face) fail(404, 'No se encontró la página de la historia.');
         if (!face.isDecisionPage || !face.choices.includes(body.choice)) {
@@ -974,6 +997,46 @@ export function createAppServer({
       return;
     }
 
+    // Gives the owner or the invited co-star a link anyone can open to read the comic (created on first use).
+    if (segments.length === 4 && segments[3] === 'share' && request.method === 'POST') {
+      await readJsonBody(request).catch(() => null);
+      const token = await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
+        if (typeof story.readToken !== 'string') story.readToken = randomBytes(32).toString('base64url');
+        // Counted each time someone taps Share (the admin panel shows it next to the opens of the link).
+        story.sharing = { ...story.sharing, shares: (story.sharing?.shares ?? 0) + 1, lastSharedAt: Date.now() };
+        await saveStory(story);
+        return story.readToken;
+      });
+      sendJson(response, 200, { token });
+      return;
+    }
+
+    // Rewrites the instructions after Gemini refused the content, then restarts generation. Owner only.
+    if (segments.length === 4 && segments[3] === 'instructions' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (!isObject(body) || !exactKeys(body, ['instructions'])) fail(400, 'Las instrucciones no son válidas.');
+      const instructions = validateString(body.instructions, 'instructions', 2000, { optional: true }).trim();
+      if (!worker) fail(503, 'La generación de cómics no está disponible en este momento.');
+      await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (await participantRole(request, story) !== 'owner') fail(403, 'Solo quien creó la historia puede modificarla.');
+        if (story.generation?.state !== 'stopped') fail(409, 'La historia no está detenida.');
+        if (story.settings.genre === 'Custom' && !instructions) fail(400, 'El campo premise es obligatorio para el género Custom.');
+      });
+      await updateStoryRecord(id, (story) => {
+        if (story.settings.genre === 'Custom') story.settings.premise = instructions;
+        else story.settings.extraInstructions = instructions;
+        story.generation = { state: 'queued', at: Date.now() };
+      });
+      worker.start(id);
+      sendJson(response, 202, { started: true });
+      return;
+    }
+
     // Saves a browser push subscription so the owner or guest is told about decisions and the end.
     if (segments.length === 4 && segments[3] === 'subscriptions' && request.method === 'POST') {
       const body = await readJsonBody(request);
@@ -986,7 +1049,7 @@ export function createAppServer({
       await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        await participantRole(request, story);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
         const others = (Array.isArray(story.subscriptions) ? story.subscriptions : [])
           .filter((entry) => entry.subscription.endpoint !== subscription.endpoint);
         story.subscriptions = [...others, { subscription, url: body.url, lang }].slice(-10);
@@ -1192,6 +1255,14 @@ export function createAppServer({
         return;
       }
       if (dev) {
+        // Vite's dev server can serve any file under the project root. Never let it reach the data folder
+        // (comics, invitations, keys, audit log), git metadata or env files, however the path is encoded.
+        let decoded;
+        try { decoded = decodeURIComponent(url.pathname); } catch { decoded = url.pathname; }
+        if (/(^|[\\/])(\.data|\.git|\.env[^\\/]*)([\\/]|$)/i.test(decoded)) {
+          sendJson(response, 404, { error: 'No se encontró la aplicación.' });
+          return;
+        }
         const vite = await initializeVite();
         await new Promise((resolveMiddleware, rejectMiddleware) => {
           vite.middlewares(request, response, (error) => {
@@ -1271,6 +1342,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       server = createAppServer({
         dev, publicBaseUrl: process.env.PUBLIC_BASE_URL,
         geminiApiKey: process.env.GEMINI_API_KEY,
+        geminiLogLevel: process.env.GEMINI_LOG || undefined,
         geminiUpstream: process.env.GEMINI_UPSTREAM_URL,
         allowedModels: process.env.GEMINI_ALLOWED_MODELS,
         dailyBudgetUsd: Number(process.env.GEMINI_DAILY_BUDGET_USD ?? 0),
