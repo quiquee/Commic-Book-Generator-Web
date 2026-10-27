@@ -195,7 +195,7 @@ export const es = {
     "common.close": "Cerrar",
     "view.loading": "Cargando cómic...",
     "panel.alt": "Viñeta del cómic",
-    "panel.shareBackCover": "Compartir un enlace para leer el cómic",
+    "panel.shareLink": "Compartir un enlace para leer el cómic",
     "panel.share": "Compartir",
     "panel.choicePrompt": "¿Qué te guía?",
     "panel.printing": "IMPRIMIENDO... {done}/{total}",
@@ -377,6 +377,8 @@ export const es = {
     "view.shareCopied": "Enlace copiado. Pégalo donde quieras compartir el cómic.",
     "view.shareManual": "Copia este enlace para compartir el cómic: {url}",
     "view.readOnly": "Estás leyendo una copia compartida: solo quienes crearon el cómic pueden elegir.",
+    "admin.shares": "Compartidos",
+    "admin.opens": "Aperturas",
 };
 
 export type MessageKey = keyof typeof es;

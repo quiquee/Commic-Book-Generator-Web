@@ -196,7 +196,7 @@ export const gl: Record<MessageKey, string> = {
     'common.close': 'Pechar',
     'view.loading': 'Cargando cómic...',
     'panel.alt': 'Viñeta do cómic',
-    'panel.shareBackCover': 'Compartir unha ligazón para ler o cómic',
+    'panel.shareLink': 'Compartir unha ligazón para ler o cómic',
     'panel.share': 'Compartir',
     'panel.choicePrompt': 'Que te guía?',
     'panel.printing': 'IMPRIMINDO... {done}/{total}',
@@ -378,4 +378,6 @@ export const gl: Record<MessageKey, string> = {
     'view.shareCopied': 'Ligazón copiada. Pégaa onde queiras compartir o cómic.',
     'view.shareManual': 'Copia esta ligazón para compartir o cómic: {url}',
     'view.readOnly': 'Estás a ler unha copia compartida: só quen creou o cómic pode escoller.',
+    'admin.shares': 'Compartidos',
+    'admin.opens': 'Aperturas',
 };

@@ -47,6 +47,9 @@ export interface AdminStoryItem {
     deletedBy?: 'owner' | 'admin';
     hasFriend: boolean;
     usage: UsageTotals;
+    // Times the Share button was used / times a shared link was opened.
+    shares: number;
+    opens: number;
 }
 
 export interface AdminStoryList {
@@ -84,6 +87,10 @@ export interface AdminStoryDetail {
     status: StoryStatus;
     completedPages: number;
     totalPages: number;
+    shares?: number;
+    opens?: number;
+    lastSharedAt?: number;
+    lastOpenedAt?: number;
     faces: AdminFace[];
     usage: {
         totals: UsageTotals;

@@ -278,7 +278,7 @@ test('CSV has BOM, exact columns, quoting, and neutralizes formula cells', async
   const bytes = Buffer.from(await response.arrayBuffer());
   assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
   const text = bytes.toString('utf8');
-  assert.equal(text.split('\r\n')[0], '\ufeffid,title,host,guest,status,createdAt,deletedAt,calls,errors,inputText,inputImage,outputText,outputImage,cached,totalTokens,costUsd');
+  assert.equal(text.split('\r\n')[0], '\ufeffid,title,host,guest,status,createdAt,deletedAt,calls,errors,inputText,inputImage,outputText,outputImage,cached,totalTokens,costUsd,shares,opens');
   assert.ok(text.includes(`"'=SUM(1,2)"`));
   assert.ok(text.includes(`"'+Host"`));
   assert.ok(text.includes(`"'@Guest"`));

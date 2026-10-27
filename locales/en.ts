@@ -196,7 +196,7 @@ export const en: Record<MessageKey, string> = {
     'common.close': 'Close',
     'view.loading': 'Loading comic...',
     'panel.alt': 'Comic panel',
-    'panel.shareBackCover': 'Share a link to read the comic',
+    'panel.shareLink': 'Share a link to read the comic',
     'panel.share': 'Share',
     'panel.choicePrompt': 'What guides you?',
     'panel.printing': 'PRINTING... {done}/{total}',
@@ -378,4 +378,6 @@ export const en: Record<MessageKey, string> = {
     'view.shareCopied': 'Link copied. Paste it wherever you want to share the comic.',
     'view.shareManual': 'Copy this link to share the comic: {url}',
     'view.readOnly': 'You are reading a shared copy: only the people who made the comic can choose.',
+    'admin.shares': 'Shares',
+    'admin.opens': 'Opens',
 };

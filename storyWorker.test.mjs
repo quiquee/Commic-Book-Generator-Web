@@ -226,3 +226,30 @@ test('the share link lets anyone read the comic but nothing else, and only parti
   assert.equal((await api(`/api/stories/${id}`, { method: 'DELETE', token: reader })).status, 403);
   assert.equal((await read(ownerToken)).payload.title, 'Cómic de prueba');
 });
+
+test('the admin sees how many times a comic was shared and how many times the shared link was opened', async () => {
+  const { id, ownerToken } = await createComic();
+  const share = () => api(`/api/stories/${id}/share`, { method: 'POST', token: ownerToken, body: {} });
+  const reader = (await share()).payload.token;
+  await share();
+  await api(`/api/stories/${id}`, { token: reader });
+  await api(`/api/stories/${id}`, { token: reader });
+  await api(`/api/stories/${id}?after=0`, { token: reader });
+  await api(`/api/stories/${id}`, { token: ownerToken });
+
+  const login = await fetch(`${base}/api/admin/login`, { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-admin-request': '1' }, body: JSON.stringify({ password: 'secret' }) });
+  const headers = { cookie: login.headers.get('set-cookie').split(';')[0] };
+  const list = await (await fetch(`${base}/api/admin/stories`, { headers })).json();
+  const entry = list.items.find((item) => item.id === id);
+  assert.equal(entry.shares, 2);
+  assert.equal(entry.opens, 2);
+  const detail = await (await fetch(`${base}/api/admin/stories/${id}`, { headers })).json();
+  assert.equal(detail.shares, 2);
+  assert.equal(detail.opens, 2);
+  assert.ok(detail.lastSharedAt > 0 && detail.lastOpenedAt > 0);
+  assert.ok(!JSON.stringify(detail).includes(reader));
+  const csv = await (await fetch(`${base}/api/admin/usage.csv`, { headers })).text();
+  assert.match(csv.split('\r\n')[0], /,shares,opens$/);
+  assert.match(csv.split('\r\n').find((line) => line.includes(id)), /,"2","2"$/);
+});

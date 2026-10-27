@@ -66,6 +66,8 @@ export function createAdminHandler({
       completedPages, totalPages: 12,
       status: deleted ? 'deleted' : completedPages >= 12 ? 'complete' : 'in_progress',
       hasFriend: record.hasFriend ?? !!record.friend, usage: totals ?? emptyTotals(),
+      shares: record.sharing?.shares ?? 0, opens: record.sharing?.opens ?? 0,
+      ...pick(record.sharing, ['lastSharedAt', 'lastOpenedAt']),
     };
   }
   async function allStories() {
@@ -215,7 +217,7 @@ export function createAdminHandler({
       }
       if (path === '/api/admin/usage.csv' && req.method === 'GET') {
         const fields = ['id', 'title', 'host', 'guest', 'status', 'createdAt', 'deletedAt', 'calls', 'errors',
-          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd'];
+          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd', 'shares', 'opens'];
         const cell = (value) => {
           let text = String(value ?? '');
           if (/^[=+\-@]/.test(text) || /^[\t\r\n]/.test(text) || /^\s+[=+\-@]/.test(text)) text = "'" + text;
@@ -287,7 +289,7 @@ export function createAdminHandler({
           const summary = item({ ...source, id }, accounting?.totals, !record);
           return json(200, {
             ...pick(summary, ['id', 'title', 'hostName', 'guestName', 'createdAt', 'updatedAt', 'deletedAt',
-              'deletedBy', 'status', 'completedPages', 'totalPages']),
+              'deletedBy', 'status', 'completedPages', 'totalPages', 'shares', 'opens', 'lastSharedAt', 'lastOpenedAt']),
             ...pick(source, ['tone', 'styleGuide', 'invitationId']),
             ...(source.settings ? { settings: pick(source.settings, ['genre', 'language', 'premise', 'richMode']) } : {}),
             faces: !record ? [] : (record.faces ?? []).map((face) => ({

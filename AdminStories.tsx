@@ -82,7 +82,7 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                             <tr>
                                 <th scope="col">{t('admin.photos')}</th><th scope="col">{t('admin.comic')}</th><th scope="col">{t('admin.statusLabel')}</th>
                                 <th scope="col">{t('admin.pages')}</th><th scope="col">{t('admin.calls')}</th><th scope="col">{t('admin.tokens')}</th>
-                                <th scope="col">{t('admin.cost')}</th><th scope="col">{t('admin.created')}</th>
+                                <th scope="col">{t('admin.cost')}</th><th scope="col">{t('admin.shares')}</th><th scope="col">{t('admin.opens')}</th><th scope="col">{t('admin.created')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -105,6 +105,8 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                                         <td>{formatNumber(item.usage.calls)}{item.usage.errors > 0 && <span className="muted small"> ({t('admin.errShort', { count: item.usage.errors })})</span>}</td>
                                         <td>{formatNumber(item.usage.tokens.total)}</td>
                                         <td>{formatCost(item.usage)}</td>
+                                        <td>{formatNumber(item.shares)}</td>
+                                        <td>{formatNumber(item.opens)}</td>
                                         <td>{formatDate(item.createdAt)}</td>
                                     </tr>
                                 );

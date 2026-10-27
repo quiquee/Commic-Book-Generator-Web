@@ -29,10 +29,10 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             <div className="gloss"></div>
             {face.imageUrl && <img src={face.imageUrl} alt={t('panel.alt')} className={`panel-image ${isFullBleed ? '!object-cover' : ''}`} />}
 
-            {/* Share a link to read the comic (back cover only) */}
-            {face.type === 'back_cover' && onShare && (
+            {/* Share a link to read the comic (the same link from any page) */}
+            {face.imageUrl && onShare && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); onShare(); }}
-                  aria-label={t('panel.shareBackCover')}
+                  aria-label={t('panel.shareLink')}
                   className="absolute top-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
                     {t('panel.share')}
                 </button>

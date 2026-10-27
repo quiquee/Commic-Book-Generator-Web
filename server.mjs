@@ -579,6 +579,7 @@ export function createAppServer({
       deletedAt: Date.now(),
       completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
       deletedBy,
+      ...(story.sharing ? { sharing: story.sharing } : {}),
     });
     if (story.invitationId) {
       await prepareStorage();
@@ -854,6 +855,11 @@ export function createAppServer({
         await prepareStoryStorage();
         const story = await loadStory(id);
         const role = await participantRole(request, story);
+        // A reader loading the comic (not the updates the page polls for) counts as one open of the link.
+        if (role === 'reader' && !hasAfter) {
+          story.sharing = { ...story.sharing, opens: (story.sharing?.opens ?? 0) + 1, lastOpenedAt: Date.now() };
+          await saveStory(story);
+        }
         return {
           id: story.id,
           title: story.title,
@@ -998,10 +1004,10 @@ export function createAppServer({
         await prepareStoryStorage();
         const story = await loadStory(id);
         if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
-        if (typeof story.readToken !== 'string') {
-          story.readToken = randomBytes(32).toString('base64url');
-          await saveStory(story);
-        }
+        if (typeof story.readToken !== 'string') story.readToken = randomBytes(32).toString('base64url');
+        // Counted each time someone taps Share (the admin panel shows it next to the opens of the link).
+        story.sharing = { ...story.sharing, shares: (story.sharing?.shares ?? 0) + 1, lastSharedAt: Date.now() };
+        await saveStory(story);
         return story.readToken;
       });
       sendJson(response, 200, { token });

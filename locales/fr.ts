@@ -196,7 +196,7 @@ export const fr: Record<MessageKey, string> = {
     'common.close': 'Fermer',
     'view.loading': 'Chargement de la BD...',
     'panel.alt': 'Case de la BD',
-    'panel.shareBackCover': 'Partager un lien pour lire la BD',
+    'panel.shareLink': 'Partager un lien pour lire la BD',
     'panel.share': 'Partager',
     'panel.choicePrompt': 'Qu’est-ce qui te guide ?',
     'panel.printing': 'IMPRESSION... {done}/{total}',
@@ -378,4 +378,6 @@ export const fr: Record<MessageKey, string> = {
     'view.shareCopied': 'Lien copié. Colle-le où tu veux partager la BD.',
     'view.shareManual': 'Copie ce lien pour partager la BD : {url}',
     'view.readOnly': 'Tu lis une copie partagée : seules les personnes qui ont créé la BD peuvent choisir.',
+    'admin.shares': 'Partages',
+    'admin.opens': 'Ouvertures',
 };
