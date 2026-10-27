@@ -3,8 +3,8 @@ import jsPDF from 'jspdf';
 import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
-import { errorMessage } from './invitations';
-import { fetchStory, fetchStoryDelta, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument } from './stories';
+import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
+import { createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument } from './stories';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
@@ -141,6 +141,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const choose = async (pageIndex: number, choice: string) => {
         const face = story && findFace(story.faces, pageIndex);
         if (!face || face.resolvedChoice) return;
+        if (auth.kind === 'reader') { setNotice(t('view.readOnly')); return; }
         applyFace({ ...face, resolvedChoice: choice });
         try {
             const result = await submitChoice(storyId, auth, face.id, choice);
@@ -172,23 +173,22 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         doc.save(`${titleSlug(story.title)}.pdf`);
     };
 
-    const sharePage = async (face: ComicFace) => {
-        if (!face.imageUrl || !story) return;
-        const label = face.type === 'cover' ? t('file.cover') : face.type === 'back_cover' ? t('file.backCover') : t('file.page', { page: face.pageIndex ?? '' });
+    // Shares a link anyone can open to read the comic (a reader re-shares the link they came with).
+    const shareLink = async () => {
+        if (!story) return;
         try {
-            const blob = await (await fetch(face.imageUrl)).blob();
-            const file = new File([blob], `${titleSlug(story.title)}-${label}.jpg`, { type: 'image/jpeg' });
-            const share = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
-            if (share.share && share.canShare?.({ files: [file] })) {
-                await share.share({ files: [file], title: story.title, text: `${story.title} – ${label}` });
+            const baseUrl = await fetchPublicBaseUrl().catch(() => null);
+            const url = auth.kind === 'reader' ? readLinkUrl(baseUrl, storyId, auth.token) : await createReadLink(storyId, auth, baseUrl);
+            if (navigator.share) {
+                await navigator.share({ title: story.title, text: t('view.shareText', { title: story.title }), url });
                 return;
             }
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = file.name;
-            link.click();
-            URL.revokeObjectURL(link.href);
-            setNotice(t('view.shareDownloaded'));
+            try {
+                await copyText(url);
+                setNotice(t('view.shareCopied'));
+            } catch {
+                setNotice(t('view.shareManual', { url }));
+            }
         } catch (failure) {
             if (!isAbort(failure)) setError(t('view.shareFailed', { reason: errorMessage(failure) }));
         }
@@ -247,10 +247,10 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onOpenBook={() => setCurrentSheetIndex(1)}
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
-                onShare={sharePage}
+                onShare={shareLink}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
-            {story && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
+            {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
             {editing && (
                 <div role="dialog" aria-modal="true" aria-labelledby="instructions-title" className="fixed inset-0 z-[700] bg-black/70 flex items-center justify-center p-4">
                     <form onSubmit={saveInstructions} className="bg-white border-4 border-black p-4 w-full max-w-lg flex flex-col gap-3">

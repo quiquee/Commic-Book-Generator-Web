@@ -4,7 +4,9 @@ import { intlLocale, t } from './i18n.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
-    | { kind: 'guest'; invitationId: string; token: string };
+    | { kind: 'guest'; invitationId: string; token: string }
+    // Opened from a shared link: can read the comic and nothing else.
+    | { kind: 'reader'; token: string };
 
 export interface StoryKey {
     id: string;
@@ -40,7 +42,7 @@ export interface StoryMeta extends StorySummary {
     tone: string;
     styleGuide: string;
     version: number;
-    role: 'owner' | 'guest';
+    role: 'owner' | 'guest' | 'reader';
     generation: GenerationStatus | null;
     // Only sent to the owner.
     invitationId?: string | null;
@@ -60,19 +62,22 @@ export interface AppRoute {
     story: string | null;
     join: string | null;
     token: string | null;
+    // Read-only link token (back-cover Share button).
+    read: string | null;
 }
 
 export const storyStorageKey = 'infinite-heroes.stories';
 
 export function getRoute(): AppRoute {
     const params = new URLSearchParams(window.location.hash.slice(1));
-    return { story: params.get('story'), join: params.get('join'), token: params.get('token') };
+    return { story: params.get('story'), join: params.get('join'), token: params.get('token'), read: params.get('read') };
 }
 
 export function routeHash(route: Partial<AppRoute>): string {
     const params = new URLSearchParams();
     if (route.join) params.set('join', route.join);
     if (route.token) params.set('token', route.token);
+    if (route.read) params.set('read', route.read);
     if (route.story) params.set('story', route.story);
     const value = params.toString();
     return value ? `#${value}` : '';
@@ -201,6 +206,17 @@ export function restartGeneration(id: string, auth: StoryAuth): Promise<{ starte
 // Rewrites the story instructions after Gemini refused the content, and restarts the drawing.
 export function updateInstructions(id: string, auth: StoryAuth, instructions: string): Promise<{ started: boolean }> {
     return storyRequest(`/${id}/instructions`, auth, { body: { instructions } });
+}
+
+// Link anyone can open to read this comic. Only the owner and the invited co-star can ask for it.
+export function readLinkUrl(baseUrl: string | null, id: string, token: string): string {
+    const base = baseUrl ?? `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
+    return `${base}/${routeHash({ story: id, read: token })}`;
+}
+
+export async function createReadLink(id: string, auth: StoryAuth, baseUrl: string | null): Promise<string> {
+    const { token } = await storyRequest<{ token: string }>(`/${id}/share`, auth, { body: {} });
+    return readLinkUrl(baseUrl, id, token);
 }
 
 // `url` is where the notification takes the reader back to (this same comic, with the same credentials).

@@ -92,7 +92,6 @@ export function AdminApp() {
                     <a href="#/" aria-current={active === 'overview' ? 'page' : undefined}>{t('admin.overview')}</a>
                     <a href="#/stories" aria-current={active === 'stories' ? 'page' : undefined}>{t('admin.comics')}</a>
                     <a href="#/log" aria-current={active === 'log' ? 'page' : undefined}>{t('admin.geminiLog')}</a>
-                    <a href="/api/admin/usage.csv" download>{t('admin.exportCsv')}</a>
                 </nav>
                 <button type="button" className="secondary" onClick={logout}>{t('admin.signOut')}</button>
             </header>

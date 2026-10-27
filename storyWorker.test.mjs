@@ -198,3 +198,31 @@ test('refused content stops at once without retrying, is logged, and the owner c
   assert.equal(finished.settings.premise, 'Una aventura en el mar');
   assert.equal((await edit(ownerToken, 'Otra vez')).status, 409);
 });
+
+test('the share link lets anyone read the comic but nothing else, and only participants can create it', async () => {
+  const { id, ownerToken } = await createComic();
+  const read = (token) => api(`/api/stories/${id}`, { token });
+  const share = (token) => api(`/api/stories/${id}/share`, { method: 'POST', token, body: {} });
+
+  assert.equal((await share(undefined)).status, 401);
+  assert.equal((await share('nope')).status, 401);
+  const first = await share(ownerToken);
+  assert.equal(first.status, 200);
+  assert.match(first.payload.token, /^[A-Za-z0-9_-]{30,}$/);
+  assert.equal((await share(ownerToken)).payload.token, first.payload.token);
+
+  const reader = first.payload.token;
+  const seen = await read(reader);
+  assert.equal(seen.status, 200);
+  assert.equal(seen.payload.role, 'reader');
+  assert.equal(seen.payload.invitationId, undefined);
+  assert.ok(!JSON.stringify(seen.payload).includes(ownerToken));
+
+  assert.equal((await share(reader)).status, 403);
+  assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST', token: reader, body: {} })).status, 403);
+  assert.equal((await api(`/api/stories/${id}/instructions`, { method: 'POST', token: reader, body: { instructions: 'x' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}/choices`, { method: 'POST', token: reader, body: { faceId: 'page-3', choice: 'x' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}`, { method: 'PATCH', token: reader, body: { title: 'Mío' } })).status, 403);
+  assert.equal((await api(`/api/stories/${id}`, { method: 'DELETE', token: reader })).status, 403);
+  assert.equal((await read(ownerToken)).payload.title, 'Cómic de prueba');
+});

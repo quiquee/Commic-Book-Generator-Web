@@ -15,7 +15,7 @@ interface PanelProps {
     onOpenBook: () => void;
     onDownload: () => void;
     onReset: () => void;
-    onShare?: (face: ComicFace) => void;
+    onShare?: () => void;
 }
 
 export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare }) => {
@@ -29,10 +29,10 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             <div className="gloss"></div>
             {face.imageUrl && <img src={face.imageUrl} alt={t('panel.alt')} className={`panel-image ${isFullBleed ? '!object-cover' : ''}`} />}
 
-            {/* Share current page (Web Share API on phones, download elsewhere) */}
-            {face.imageUrl && onShare && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); onShare(face); }}
-                  aria-label={face.type === 'cover' ? t('panel.shareCover') : face.type === 'back_cover' ? t('panel.shareBackCover') : t('panel.sharePage', { page: face.pageIndex ?? '' })}
+            {/* Share a link to read the comic (back cover only) */}
+            {face.type === 'back_cover' && onShare && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); onShare(); }}
+                  aria-label={t('panel.shareBackCover')}
                   className="absolute top-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
                     {t('panel.share')}
                 </button>

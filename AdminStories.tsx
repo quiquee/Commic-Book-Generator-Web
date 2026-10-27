@@ -121,6 +121,7 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                     <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t('admin.next')}</button>
                 </nav>
             )}
+            <p className="muted"><a href="/api/admin/usage.csv" download>{t('admin.exportCsv')}</a></p>
         </>
     );
 }

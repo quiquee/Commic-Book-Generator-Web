@@ -77,6 +77,8 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+const READ_ONLY = 'Esta acción no está disponible con el enlace de lectura.';
+
 function exactKeys(value, keys) {
   return isObject(value)
     && Object.keys(value).length === keys.length
@@ -376,6 +378,12 @@ async function serveStatic(request, response, root) {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   const rootPath = resolve(root);
   let file = await getStaticPath(rootPath, pathname);
+  // A bundle that is gone (e.g. a cached page from before a rebuild) must not be answered with the app page.
+  if (!file && pathname.startsWith('/assets/')) {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found');
+    return;
+  }
   if (!file) file = await getStaticPath(rootPath, '/index.html');
   if (!file) {
     sendJson(response, 404, { error: 'No se encontró la aplicación.' });
@@ -701,6 +709,8 @@ export function createAppServer({
     const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? '');
     if (!match) fail(401, 'No tienes autorización para esta historia.');
     if (tokenMatches(match[1], story.ownerToken)) return 'owner';
+    // Anyone holding the link from the back-cover Share button can read the comic, nothing else.
+    if (typeof story.readToken === 'string' && tokenMatches(match[1], story.readToken)) return 'reader';
     if (story.invitationId) {
       let invitation;
       try {
@@ -937,7 +947,7 @@ export function createAppServer({
       const result = await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        await participantRole(request, story);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
         const face = story.faces.find((item) => item.id === body.faceId);
         if (!face) fail(404, 'No se encontró la página de la historia.');
         if (!face.isDecisionPage || !face.choices.includes(body.choice)) {
@@ -981,6 +991,23 @@ export function createAppServer({
       return;
     }
 
+    // Gives the owner or the invited co-star a link anyone can open to read the comic (created on first use).
+    if (segments.length === 4 && segments[3] === 'share' && request.method === 'POST') {
+      await readJsonBody(request).catch(() => null);
+      const token = await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
+        if (typeof story.readToken !== 'string') {
+          story.readToken = randomBytes(32).toString('base64url');
+          await saveStory(story);
+        }
+        return story.readToken;
+      });
+      sendJson(response, 200, { token });
+      return;
+    }
+
     // Rewrites the instructions after Gemini refused the content, then restarts generation. Owner only.
     if (segments.length === 4 && segments[3] === 'instructions' && request.method === 'POST') {
       const body = await readJsonBody(request);
@@ -1016,7 +1043,7 @@ export function createAppServer({
       await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        await participantRole(request, story);
+        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
         const others = (Array.isArray(story.subscriptions) ? story.subscriptions : [])
           .filter((entry) => entry.subscription.endpoint !== subscription.endpoint);
         story.subscriptions = [...others, { subscription, url: body.url, lang }].slice(-10);

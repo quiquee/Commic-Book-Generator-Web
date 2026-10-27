@@ -114,7 +114,8 @@ export function createAdminHandler({
   return async function handle(req, res, url = new URL(req.url, 'http://localhost')) {
     const path = url.pathname;
     const api = path.startsWith('/api/admin');
-    const page = ['/admin', '/admin/', '/admin.html'].includes(path);
+    // Any /admin/... address is a page too: known names jump to their view, the rest to the panel itself.
+    const page = ['/admin', '/admin/', '/admin.html'].includes(path) || path.startsWith('/admin/');
     if (!api && !page) return false;
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -125,10 +126,21 @@ export function createAdminHandler({
       return true;
     };
     try {
-      if (!adminPassword) return json(404, { error: 'Panel de administración deshabilitado.' });
+      if (!adminPassword) {
+        if (!page) return json(404, { error: 'Panel de administración deshabilitado.' });
+        // Browsers navigating here get a page, not a JSON file some of them would offer to download.
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'inline' });
+        res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin</title>'
+          + '<p style="font-family:sans-serif;padding:2rem">Panel de administración deshabilitado.</p>');
+        return true;
+      }
       if (page) {
         if (!['GET', 'HEAD'].includes(req.method)) fail(405, 'Método no permitido.');
-        if (path === '/admin/') { res.writeHead(302, { Location: '/admin' }); res.end(); return true; }
+        if (path.startsWith('/admin/')) {
+          const target = { '/admin/comics': '/admin#/stories', '/admin/stories': '/admin#/stories', '/admin/log': '/admin#/log' }[path.replace(/\/$/, '')] ?? '/admin';
+          res.writeHead(302, { Location: target }); res.end(); return true;
+        }
+        res.setHeader('Content-Disposition', 'inline');
         if (!dev) {
           res.setHeader('Content-Security-Policy', CSP);
           res.setHeader('X-Frame-Options', 'DENY');

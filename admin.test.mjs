@@ -84,7 +84,13 @@ async function fixture(t, options = {}) {
 
 test('disabled routes all return the Spanish 404 without serving the page', async (t) => {
   const { request } = await fixture(t, { adminPassword: undefined });
-  for (const path of ['/admin', '/admin/', '/admin.html', '/api/admin', '/api/admin/session', '/api/admin-anything']) {
+  for (const path of ['/admin', '/admin/', '/admin.html']) {
+    const response = await request(path);
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get('content-type'), /^text\/html/);
+    assert.match(await response.text(), /Panel de administración deshabilitado\./);
+  }
+  for (const path of ['/api/admin', '/api/admin/session', '/api/admin-anything']) {
     const response = await request(path);
     assert.equal(response.status, 404);
     assert.deepEqual(await response.json(), { error: 'Panel de administración deshabilitado.' });
@@ -333,4 +339,24 @@ test('continuing a comic hands its owner key only to a logged-in admin request a
   assert.deepEqual(await granted.json(), { id: 'active', ownerToken: 'OWNER_SECRET' });
   const entries = (await readFile(join(directory, 'private', 'audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(entries.filter((entry) => entry.action === 'story_continue').map((entry) => entry.storyId), ['active']);
+});
+
+test('any /admin/... address lands on the panel, and a disabled panel answers with a page, not a download', async (t) => {
+  const { request } = await fixture(t);
+  for (const [path, target] of [['/admin/', '/admin'], ['/admin/comics', '/admin#/stories'], ['/admin/log/', '/admin#/log'], ['/admin/anything/else', '/admin']]) {
+    const response = await request(path);
+    assert.equal(response.status, 302, path);
+    assert.equal(response.headers.get('location'), target, path);
+  }
+  const page = await request('/admin');
+  assert.equal(page.headers.get('content-disposition'), 'inline');
+
+  const disabled = await fixture(t, { adminPassword: '' });
+  const html = await disabled.request('/admin/comics', { headers: { accept: 'text/html' } });
+  assert.equal(html.status, 404);
+  assert.match(html.headers.get('content-type'), /^text\/html/);
+  assert.equal(html.headers.get('content-disposition'), 'inline');
+  assert.match(await html.text(), /deshabilitado/);
+  const api = await disabled.request('/api/admin/session');
+  assert.match(api.headers.get('content-type'), /^application\/json/);
 });
