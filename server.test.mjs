@@ -640,3 +640,40 @@ test('wires proxy drafts into stories and retains owner/admin deletion accountin
   assert.ok(audit.some((entry) => entry.action === 'story_delete' && entry.storyId === another.id));
   assert.equal((await stat(join(dataDir, 'usage', '_daily.json'))).mode & 0o777, 0o600);
 });
+
+test('the next issue copies the cast and look of a finished comic and refuses unfinished or foreign ones', async () => {
+  const source = await api('/api/stories', { method: 'POST', body: { ...storyBody(), friend: { base64: JPEG, desc: 'Amiga' } } });
+  const owner = source.payload.ownerToken;
+  const continuation = { fromId: source.payload.id, token: owner, recap: 'Resumen.', direction: 'Perdonar' };
+  const body = { ...storyBody(), title: 'Otro #2', hero: { base64: JPEG, desc: 'Otro' }, continuation };
+
+  const early = await api('/api/stories', { method: 'POST', body });
+  assert.equal(early.response.status, 409);
+
+  const image = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(16), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  for (let page = 0; page <= 11; page++) {
+    const id = page === 0 ? 'cover' : `page-${page}`;
+    const saved = await api(`/api/stories/${source.payload.id}/faces/${id}`, {
+      method: 'PUT', token: owner, body: faceBody(id, { imageUrl: image })
+    });
+    assert.equal(saved.response.status, 200);
+  }
+
+  for (const bad of [
+    { ...body, continuation: { ...continuation, token: 'wrong' } },
+    { ...body, continuation: { ...continuation, extra: 1 } },
+    { ...body, continuation: { ...continuation, direction: '' } },
+  ]) {
+    const rejected = await api('/api/stories', { method: 'POST', body: bad });
+    assert.ok([400, 401].includes(rejected.response.status), String(rejected.response.status));
+  }
+
+  const created = await api('/api/stories', { method: 'POST', body });
+  assert.equal(created.response.status, 201);
+  const next = await api(`/api/stories/${created.payload.id}`, { token: created.payload.ownerToken });
+  assert.equal(next.payload.title, 'Otro #2');
+  assert.equal(next.payload.hero.desc, 'Héroe');
+  assert.equal(next.payload.friend.desc, 'Amiga');
+  assert.deepEqual(next.payload.continuation, { fromId: source.payload.id, issue: 2, recap: 'Resumen.', direction: 'Perdonar' });
+  assert.equal(next.payload.faces.length, 0);
+});

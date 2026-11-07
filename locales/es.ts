@@ -379,6 +379,19 @@ export const es = {
     "view.readOnly": "Estás leyendo una copia compartida: solo quienes crearon el cómic pueden elegir.",
     "admin.shares": "Compartidos",
     "admin.opens": "Aperturas",
+    "continue.title": "Número {issue}: ¿cómo sigue?",
+    "continue.loading": "Resumiendo la historia y pensando por dónde puede seguir...",
+    "continue.recap": "La historia hasta ahora",
+    "continue.direction": "¿Hacia dónde va el siguiente número?",
+    "continue.custom": "Mi propia idea",
+    "continue.customPlaceholder": "Escribe cómo quieres que siga",
+    "continue.start": "EMPEZAR EL NÚMERO {issue}",
+    "continue.button": "Continuar: número siguiente",
+    "continue.titleTaken": "Ya tienes un cómic con ese título. Cámbialo.",
+    "continue.recapFailed": "No se pudo resumir la historia: {reason}",
+    "continue.createFailed": "No se pudo crear el siguiente número: {reason}",
+    "continue.loadFailed": "No se pudo cargar el cómic para continuarlo: {reason}",
+    "library.issue": "Número {issue}",
 };
 
 export type MessageKey = keyof typeof es;

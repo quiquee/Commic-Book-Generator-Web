@@ -11,7 +11,7 @@ import { createAdminHandler } from './admin.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { createStoryWorker } from './storyWorker.mjs';
 import { createPushService, validateSubscription } from './push.mjs';
-import { nextPageToGenerate } from './storyLogic.ts';
+import { isStoryFinished, nextPageToGenerate } from './storyLogic.ts';
 import { translateServerText } from './locales/serverText.ts';
 
 const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
@@ -145,8 +145,23 @@ function validateStoryCreate(body) {
     'title', 'hostName', 'guestName', 'hero', 'friend', 'settings', 'tone', 'invitation',
   ];
   if (!isObject(body) || !required.every((key) => Object.hasOwn(body, key))
-    || Object.keys(body).some((key) => ![...required, 'draftId'].includes(key))) {
+    || Object.keys(body).some((key) => ![...required, 'draftId', 'continuation'].includes(key))) {
     fail(400, 'El cuerpo de la historia no es válido.');
+  }
+  let continuation = null;
+  if (Object.hasOwn(body, 'continuation')) {
+    const value = body.continuation;
+    if (!isObject(value) || !exactKeys(value, ['fromId', 'token', 'recap', 'direction'])
+      || typeof value.fromId !== 'string' || !safeInvitationId(value.fromId) || typeof value.token !== 'string') {
+      fail(400, 'La continuación no es válida.');
+    }
+    if (body.invitation !== null) fail(400, 'Una continuación no puede vincular una invitación.');
+    continuation = {
+      fromId: value.fromId,
+      token: value.token,
+      recap: validateString(value.recap, 'recap', 3000),
+      direction: validateString(value.direction, 'direction', 500),
+    };
   }
   if (Object.hasOwn(body, 'draftId') && (typeof body.draftId !== 'string' || !safeInvitationId(body.draftId))) {
     fail(400, 'El identificador del borrador no es válido.');
@@ -175,6 +190,7 @@ function validateStoryCreate(body) {
     styleGuide: '',
     invitation,
     draftId: body.draftId,
+    continuation,
   };
 }
 
@@ -796,6 +812,21 @@ export function createAppServer({
           if (!costar) fail(409, `${invitation.guestName} todavía no se ha unido a la invitación.`);
         }
 
+        // The next issue keeps the cast, look and settings of the one it continues.
+        let continued = null;
+        if (body.continuation) {
+          try {
+            continued = await loadStory(body.continuation.fromId);
+          } catch (error) {
+            if (error instanceof HttpError && error.status === 404) fail(401, 'No tienes autorización para continuar esta historia.');
+            throw error;
+          }
+          if (!tokenMatches(body.continuation.token, continued.ownerToken)) {
+            fail(401, 'No tienes autorización para continuar esta historia.');
+          }
+          if (!isStoryFinished(continued.faces)) fail(409, 'La historia aún no ha terminado.');
+        }
+
         const now = Date.now();
         const story = {
           id: randomUUID(),
@@ -804,11 +835,19 @@ export function createAppServer({
           title: body.title,
           hostName: invitation?.hostName ?? body.hostName,
           guestName: invitation?.guestName ?? body.guestName,
-          hero: body.hero,
-          friend: costar ? { base64: costar.persona.base64, desc: costar.name } : body.friend,
-          settings: invitation?.settings ?? body.settings,
-          tone: body.tone,
-          styleGuide: '',
+          hero: continued?.hero ?? body.hero,
+          friend: continued ? continued.friend : costar ? { base64: costar.persona.base64, desc: costar.name } : body.friend,
+          settings: continued?.settings ?? invitation?.settings ?? body.settings,
+          tone: continued?.tone ?? body.tone,
+          styleGuide: continued?.styleGuide ?? '',
+          ...(continued ? {
+            continuation: {
+              fromId: continued.id,
+              issue: (continued.continuation?.issue ?? 1) + 1,
+              recap: body.continuation.recap,
+              direction: body.continuation.direction,
+            },
+          } : {}),
           faces: [],
           version: 0,
           createdAt: now,
@@ -873,6 +912,7 @@ export function createAppServer({
           updatedAt: story.updatedAt,
           totalPages: 12,
           completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
+          continuation: story.continuation ?? null,
           role,
           generation: story.generation ?? null,
           // Lets the owner redo the comic with the same invited co-star.
