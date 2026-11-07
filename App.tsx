@@ -368,12 +368,11 @@ const App: React.FC = () => {
             onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
             onPropose: proposeTitle
           }}
-      >
-          {!isTransitioning && <>
+          belowLaunch={!isTransitioning && <>
             <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onRedo={redoStory} onTitlesLoaded={setLibraryTitles} />
             <AdminLibrary key={`admin-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} />
           </>}
-      </Setup>
+      />
       <Book comicFaces={[]} currentSheetIndex={0} isStarted={false} isSetupVisible={!isTransitioning} onSheetClick={() => {}} onChoice={() => {}} onOpenBook={() => {}} onDownload={() => {}} onReset={() => {}} />
     </>;
   }

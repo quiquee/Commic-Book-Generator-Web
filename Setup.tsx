@@ -123,6 +123,8 @@ interface SetupProps {
     // Shown under the heading (e.g. which comic is being redone).
     banner?: React.ReactNode;
     children?: React.ReactNode;
+    // Rendered under the launch button (the user's existing comics).
+    belowLaunch?: React.ReactNode;
     titleField?: {
         value: string;
         busy: boolean;
@@ -309,6 +311,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                 <button onClick={props.onLaunch} disabled={!props.hero || props.isTransitioning || props.launchDisabled} className="comic-btn bg-red-600 text-white text-3xl px-6 py-3 w-full hover:bg-red-500 disabled:bg-gray-400 disabled:cursor-not-allowed uppercase tracking-wider">
                     {props.launchLabel || (props.isTransitioning ? t('launch.going') : t('launch.start'))}
                 </button>
+                {props.belowLaunch && <div className="mt-5">{props.belowLaunch}</div>}
             </div>
           </div>
         </div>
