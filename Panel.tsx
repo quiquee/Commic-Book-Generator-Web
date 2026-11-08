@@ -16,11 +16,13 @@ interface PanelProps {
     onDownload: () => void;
     onReset: () => void;
     onShare?: () => void;
+    // Only for the owner of a finished comic.
+    onContinue?: () => void;
     // Number of the issue (2 or more for a continuation); 1 when absent.
     issue?: number;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, issue = 1 }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, onContinue, issue = 1 }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
     if (face.isLoading && !face.imageUrl) return <LoadingFX />;
     
@@ -68,6 +70,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             {face.type === 'back_cover' && (
                 <div className="absolute bottom-24 inset-x-0 flex flex-col items-center gap-4 z-20">
                     <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="comic-btn bg-blue-500 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('panel.download')}</button>
+                    {onContinue && <button onClick={(e) => { e.stopPropagation(); onContinue(); }} className="comic-btn bg-red-600 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('continue.button')}</button>}
                     <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="comic-btn bg-green-500 text-white px-8 py-4 text-2xl font-bold hover:scale-105">{t('panel.backToMenu')}</button>
                 </div>
             )}
