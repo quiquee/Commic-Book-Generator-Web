@@ -189,6 +189,8 @@ export const fr: Record<MessageKey, string> = {
     'panel.download': 'TÉLÉCHARGER LE NUMÉRO',
     'panel.backToMenu': 'RETOUR AU MENU',
     'fx.sounds': 'POW !|VLAN !|BAM !|CRAC !|BADABOUM !|FIOUUU !|ZAP !|BOUM !',
+    'music.on': 'Activer la musique',
+    'music.off': 'Couper la musique',
     'fx.drawing': 'DESSIN DE LA PAGE...',
     'apiKey.title': 'Une identité secrète est nécessaire !',
     'apiKey.intro': 'Halte, citoyen ! Pour accéder au multivers infini et créer ces BD incroyables, il te faut une',

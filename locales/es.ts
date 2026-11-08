@@ -188,6 +188,8 @@ export const es = {
     "panel.download": "DESCARGAR NÚMERO",
     "panel.backToMenu": "VOLVER AL MENÚ",
     "fx.sounds": "¡PUM!|¡ZAS!|¡BAM!|¡CRAC!|¡CATAPLÚM!|¡FUUUSH!|¡ZAP!|¡BOOM!",
+    "music.on": "Activar la música",
+    "music.off": "Silenciar la música",
     "fx.drawing": "DIBUJANDO LA PÁGINA...",
     "apiKey.title": "¡Se necesita una identidad secreta!",
     "apiKey.intro": "¡Alto, ciudadano! Para acceder al multiverso infinito y generar estos cómics increíbles, necesitas una",

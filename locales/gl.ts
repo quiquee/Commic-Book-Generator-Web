@@ -189,6 +189,8 @@ export const gl: Record<MessageKey, string> = {
     'panel.download': 'DESCARGAR NÚMERO',
     'panel.backToMenu': 'VOLVER AO MENÚ',
     'fx.sounds': 'PUM!|ZAS!|BAM!|CRAC!|CATAPLUM!|FUUUSH!|ZAP!|BOOM!',
+    'music.on': 'Activar a música',
+    'music.off': 'Silenciar a música',
     'fx.drawing': 'DEBUXANDO A PÁXINA...',
     'apiKey.title': 'Precísase unha identidade secreta!',
     'apiKey.intro': 'Alto, cidadán! Para acceder ao multiverso infinito e xerar estes cómics incribles, precisas unha',
