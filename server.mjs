@@ -229,12 +229,14 @@ function validateFace(body, faceId) {
   if (Object.hasOwn(body, 'narrative')) {
     const narrative = body.narrative;
     if (!isObject(narrative)
-      || Object.keys(narrative).some((key) => !['caption', 'dialogue', 'scene', 'choices', 'focus_char'].includes(key))
+      || Object.keys(narrative).some((key) => !['caption', 'dialogue', 'scene', 'choices', 'focus_char', 'new_scene', 'setting'].includes(key))
       || !['scene', 'choices', 'focus_char'].every((key) => Object.hasOwn(narrative, key))
       || typeof narrative.scene !== 'string' || narrative.scene.length > 2000
       || !Array.isArray(narrative.choices) || narrative.choices.length > 4
       || narrative.choices.some((choice) => typeof choice !== 'string' || choice.length > 200)
       || !['hero', 'friend', 'other'].includes(narrative.focus_char)
+      || (Object.hasOwn(narrative, 'new_scene') && typeof narrative.new_scene !== 'boolean')
+      || (Object.hasOwn(narrative, 'setting') && (typeof narrative.setting !== 'string' || narrative.setting.length > 1000))
       || (Object.hasOwn(narrative, 'caption')
         && (typeof narrative.caption !== 'string' || narrative.caption.length > 500))
       || (Object.hasOwn(narrative, 'dialogue')
@@ -247,6 +249,8 @@ function validateFace(body, faceId) {
       scene: narrative.scene,
       choices: narrative.choices,
       focus_char: narrative.focus_char,
+      ...(Object.hasOwn(narrative, 'new_scene') ? { new_scene: narrative.new_scene } : {}),
+      ...(Object.hasOwn(narrative, 'setting') ? { setting: narrative.setting } : {}),
     };
   }
   if (Object.hasOwn(body, 'imageUrl')) {

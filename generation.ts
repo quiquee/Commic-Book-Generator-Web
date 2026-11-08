@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { LANGUAGES, MAX_STORY_PAGES, type Beat, type ComicFace, type Persona } from './types.ts';
 import type { StorySettings } from './invitations.ts';
+import { mustChangeScene } from './storyLogic.ts';
 
 export const MODEL_TEXT_NAME = 'gemini-3.8-flash';
 export const MODEL_IMAGE_GEN_NAME = 'gemini-nano-banana-2.1';
@@ -179,7 +180,7 @@ export async function generateBeat(
     const lastFocus = lastPage?.narrative?.focus_char || 'none';
 
     const historyText = relevantHistory.map(face =>
-        `[Page ${face.pageIndex}] [Focus: ${face.narrative?.focus_char}] (Caption: "${face.narrative?.caption || ''}") (Dialogue: "${face.narrative?.dialogue || ''}") (Scene: ${face.narrative?.scene}) ${face.resolvedChoice ? `-> USER CHOICE: "${face.resolvedChoice}"` : ''}`
+        `[Page ${face.pageIndex}] [Focus: ${face.narrative?.focus_char}] (Caption: "${face.narrative?.caption || ''}") (Dialogue: "${face.narrative?.dialogue || ''}") (Scene: ${face.narrative?.scene}) ${face.narrative?.setting ? `(${face.narrative.new_scene === false ? 'Same location' : 'New location'}: ${face.narrative.setting}) ` : ''}${face.resolvedChoice ? `-> USER CHOICE: "${face.resolvedChoice}"` : ''}`
     ).join('\n');
 
     let friendInstruction = 'Not yet introduced.';
@@ -229,6 +230,12 @@ export async function generateBeat(
         instruction += ' CLIMAX. The confrontation with the main conflict. The truth comes out, the contest ends, or the battle is fought.';
     }
 
+    const forceNewScene = mustChangeScene(faces, pageNum);
+    const previousSetting = lastPage?.narrative?.setting?.trim() ?? '';
+    instruction += forceNewScene
+        ? ' LOCATION: this page MUST take place in a NEW location (new_scene = true); move the story somewhere clearly different, with a natural transition.'
+        : ' LOCATION: the previous page was the first in its location. You may stay in it (new_scene = false) or move on (new_scene = true); stay only if the action really continues there.';
+
     const capLimit = settings.richMode ? 'max 35 words. Detailed narration or internal monologue' : 'max 15 words';
     const diaLimit = settings.richMode ? 'max 30 words. Rich, character-driven speech' : 'max 12 words';
 
@@ -264,6 +271,8 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
   "dialogue": "Unique speech in ${langName}. (${diaLimit}). Optional.",
   "scene": "Vivid visual description (ALWAYS IN ENGLISH for the artist model). MUST mention 'HERO' or 'CO-STAR' if they are present.",
   "focus_char": "hero" OR "friend" OR "other",
+  "new_scene": true OR false (false only if this page happens in exactly the same place as the previous page),
+  "setting": "ALWAYS IN ENGLISH, 25-50 words: the fixed physical description of the location (architecture, shape of windows and doors, furniture, props, wall and floor colors, time of day, weather). If new_scene is false, copy the previous location description${previousSetting ? ` (\"${previousSetting}\")` : ''} unchanged, only adjusting the time of day if it passes.",
   "choices": ["Option A in ${langName}", "Option B in ${langName}"] (Only if decision page)
 }
 `;
@@ -282,7 +291,14 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     const choices = Array.isArray(parsed.choices) ? parsed.choices.filter((choice: unknown) => typeof choice === 'string' && choice.trim()).map((choice: string) => choice.trim().slice(0, 200)).slice(0, 4) : [];
     parsed.choices = isDecisionPage && !isFinalPage ? (choices.length >= 2 ? choices : ['Opción A', 'Opción B']) : [];
     if (!['hero', 'friend', 'other'].includes(parsed.focus_char)) parsed.focus_char = 'hero';
-    return { caption: parsed.caption, dialogue: parsed.dialogue, scene: parsed.scene, focus_char: parsed.focus_char, choices: parsed.choices };
+    // The rule is enforced here too: Gemini may not keep the same place for more than two pages.
+    let setting = typeof parsed.setting === 'string' ? parsed.setting.trim().slice(0, 900) : '';
+    const newScene = forceNewScene || parsed.new_scene !== false || (!setting && !previousSetting);
+    if (!newScene && !setting) setting = previousSetting;
+    return {
+        caption: parsed.caption, dialogue: parsed.dialogue, scene: parsed.scene, focus_char: parsed.focus_char, choices: parsed.choices,
+        new_scene: newScene, ...(setting ? { setting } : {})
+    };
 }
 
 export interface Recap {
@@ -352,6 +368,9 @@ export async function generateImage(
     const langName = languageName(context.settings.language);
     let promptText = `STYLE: ${styleEra} comic book art, detailed ink, vibrant colors. ALL PRINTED TEXT MUST BE IN ${langName.toUpperCase()}. `;
     if (context.styleGuide) promptText += `CHARACTER BIBLE (mandatory, identical on every page): ${context.styleGuide} `;
+    // Legacy pages have no new_scene flag and keep the old behaviour.
+    const sameScene = type === 'story' && !!previousImage && beat.new_scene === false;
+    const changedScene = type === 'story' && !!previousImage && beat.new_scene === true;
     if (previousImage) promptText += 'CONTINUITY: REFERENCE 3 is the previous page of this same issue. Keep every character looking exactly like there (same outfit, hair, accessories, proportions) and keep the same rendering technique. ';
 
     if (type === 'cover') {
@@ -360,6 +379,8 @@ export async function generateImage(
         promptText += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser for the next issue of "${context.title}". Text: a localized translation of "NEXT ISSUE SOON" in ${langName}, plus the title "${context.title}" in smaller lettering.`;
     } else {
         promptText += `TYPE: Vertical comic panel. SCENE: ${beat.scene}. `;
+        if (sameScene) promptText += `SAME LOCATION AS REFERENCE 3: keep exactly the same architecture, shape and position of windows and doors, furniture, props, wall and floor colors, lighting and time of day. Only the characters' poses, the framing and the camera angle change. LOCATION DETAILS: ${beat.setting ?? ''}. `;
+        else if (changedScene) promptText += `NEW LOCATION: this panel happens somewhere different from REFERENCE 3. Use REFERENCE 3 only for the art style and the look of the characters; do NOT reuse its background or props. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         promptText += 'INSTRUCTIONS: Maintain strict character likeness. If scene mentions \'HERO\', you MUST use REFERENCE 1. If scene mentions \'CO-STAR\' or \'SIDEKICK\', you MUST use REFERENCE 2.';
         if (beat.caption) promptText += ` INCLUDE CAPTION BOX: "${beat.caption}"`;
         if (beat.dialogue) promptText += ` INCLUDE SPEECH BUBBLE: "${beat.dialogue}"`;

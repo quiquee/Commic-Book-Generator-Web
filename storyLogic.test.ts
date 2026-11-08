@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ComicFace } from './types.ts';
-import { isUnlocked, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished } from './storyLogic.ts';
+import { isUnlocked, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun } from './storyLogic.ts';
 
 const done = (pageIndex: number, extra: Partial<ComicFace> = {}): ComicFace => ({
     id: pageIndex === 0 ? 'cover' : `page-${pageIndex}`,
@@ -50,4 +50,22 @@ test('owner merge keeps local page content but adopts remote decisions', () => {
     assert.equal(merged[0].version, 7);
     const guestMerged = mergeFaces(local, remote, 'guest');
     assert.equal(guestMerged[0].imageUrl, 'stale');
+});
+
+const storyFace = (pageIndex: number, new_scene?: boolean): ComicFace => ({
+    id: `page-${pageIndex}`, type: 'story', pageIndex, isLoading: false, choices: [],
+    narrative: { scene: 's', choices: [], focus_char: 'hero', ...(new_scene === undefined ? {} : { new_scene }) }
+});
+
+test('a location lasts at most two pages and an issue starts in a new one', () => {
+    assert.equal(mustChangeScene([], 1), true);
+    assert.equal(mustChangeScene([storyFace(1, true)], 2), false);
+    assert.equal(sceneRun([storyFace(1, true), storyFace(2, false)], 3), 2);
+    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false)], 3), true);
+    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false), storyFace(3, true)], 4), false);
+});
+
+test('pages made before scenes were tracked each count as their own scene', () => {
+    assert.equal(sceneRun([storyFace(1), storyFace(2)], 3), 1);
+    assert.equal(mustChangeScene([storyFace(1), storyFace(2)], 3), false);
 });
