@@ -387,6 +387,7 @@ export async function generateImage(
         if (keepLocation) promptText += `SAME LOCATION AS REFERENCE 3${sceneImage ? ' AND REFERENCE 4' : ''}: keep exactly the same architecture, shape and position of windows and doors, furniture, props, wall and floor colors, lighting and time of day. Only the characters' poses, the framing and the camera angle change. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         else if (changedScene) promptText += `NEW LOCATION: this panel happens somewhere different from REFERENCE 3. Use REFERENCE 3 only for the art style and the look of the characters; do NOT reuse its background or props. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         promptText += 'INSTRUCTIONS: Maintain strict character likeness. If scene mentions \'HERO\', you MUST use REFERENCE 1. If scene mentions \'CO-STAR\' or \'SIDEKICK\', you MUST use REFERENCE 2.';
+        promptText += ' LETTERING: all text must be LARGE and easy to read, about twice the usual comic size: big bold hand-lettered capital letters, thick speech bubbles and caption boxes that take generous space, high contrast with the background.';
         if (beat.caption) promptText += ` INCLUDE CAPTION BOX: "${beat.caption}"`;
         if (beat.dialogue) promptText += ` INCLUDE SPEECH BUBBLE: "${beat.dialogue}"`;
     }

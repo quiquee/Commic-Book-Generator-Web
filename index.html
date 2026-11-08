@@ -16,7 +16,7 @@
       :root {
         /* 2:3 Aspect Ratio: 500w / 750h. Matches classic comic book ratio. 
            We use min(80vh, 750px) to ensure it fits in the viewport even on desktop. */
-        --page-height: min(80vh, 750px);
+        --page-height: min(100vh, 100dvh, 75vw);
         --page-width: calc(var(--page-height) * 0.666);
       }
 
@@ -223,7 +223,7 @@
         /* On mobile, maintain aspect ratio but ensure it fits in viewport (width OR height) 
            We limit height to 80vh to ensure it doesn't overflow vertically. */
         :root { 
-             --page-height: min(80vh, 130vw);
+             --page-height: min(100dvh, 130vw);
              --page-width: calc(var(--page-height) * 0.666);
         }
         
