@@ -189,6 +189,8 @@ export const de: Record<MessageKey, string> = {
     'panel.download': 'AUSGABE HERUNTERLADEN',
     'panel.backToMenu': 'ZURÜCK ZUM MENÜ',
     'fx.sounds': 'PENG!|ZACK!|BÄM!|KRACH!|KAWUMM!|WUSCH!|ZAP!|BUMM!',
+    'music.on': 'Musik einschalten',
+    'music.off': 'Musik stummschalten',
     'fx.drawing': 'SEITE WIRD GEZEICHNET...',
     'apiKey.title': 'Eine geheime Identität ist nötig!',
     'apiKey.intro': 'Halt, Bürger! Um ins unendliche Multiversum zu gelangen und diese fantastischen Comics zu erstellen, brauchst du einen',

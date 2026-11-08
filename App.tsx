@@ -16,6 +16,8 @@ import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
 import { AdminLibrary } from './AdminLibrary';
 import { StoryView } from './StoryView';
+import { MusicPlayer } from './MusicPlayer';
+import type { Mood } from './music';
 import { ContinueStory } from './ContinueStory';
 import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
 import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument } from './stories';
@@ -33,6 +35,8 @@ function pickTone(genre: string): string {
 }
 
 const App: React.FC = () => {
+  // Music mood of the comic being read (null on the setup screens: a random track of any mood).
+  const [storyMood, setStoryMood] = useState<Mood | null>(null);
   const { validateApiKey, setShowApiKeyDialog, showApiKeyDialog, handleApiKeyDialogContinue } = useApiKey();
 
   const [hero, setHero] = useState<Persona | null>(null);
@@ -245,7 +249,7 @@ const App: React.FC = () => {
 
   let content: React.ReactNode;
   if (route.story && storyAuth) {
-    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} />;
+    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onMood={setStoryMood} />;
   } else if (route.story) {
     content = (
       <div className="bg-white border-4 border-black p-8 max-w-lg text-center">
@@ -308,6 +312,7 @@ const App: React.FC = () => {
 
   return (
     <div className="comic-scene">
+      <MusicPlayer mood={route.story ? storyMood : null} />
       <button type="button" onClick={returnToMainMenu} className="fixed bottom-2 left-2 z-[500] comic-btn bg-yellow-400/90 text-black px-2 py-1 text-base">{t('nav.mainMenu')}</button>
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
           {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>

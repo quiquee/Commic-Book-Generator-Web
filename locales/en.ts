@@ -189,6 +189,8 @@ export const en: Record<MessageKey, string> = {
     'panel.download': 'DOWNLOAD ISSUE',
     'panel.backToMenu': 'BACK TO MENU',
     'fx.sounds': 'POW!|ZAP!|BAM!|CRACK!|KABOOM!|WHOOSH!|ZING!|BOOM!',
+    'music.on': 'Turn the music on',
+    'music.off': 'Mute the music',
     'fx.drawing': 'DRAWING THE PAGE...',
     'apiKey.title': 'A secret identity is required!',
     'apiKey.intro': 'Halt, citizen! To enter the infinite multiverse and create these amazing comics, you need a',

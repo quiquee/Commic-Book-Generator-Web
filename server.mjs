@@ -48,6 +48,7 @@ const CONTENT_TYPES = new Map([
   ['.json', 'application/json; charset=utf-8'],
   ['.map', 'application/json; charset=utf-8'],
   ['.mjs', 'text/javascript; charset=utf-8'],
+  ['.mp3', 'audio/mpeg'],
   ['.mp4', 'video/mp4'],
   ['.otf', 'font/otf'],
   ['.pdf', 'application/pdf'],
@@ -409,16 +410,33 @@ async function serveStatic(request, response, root) {
     sendJson(response, 404, { error: 'No se encontró la aplicación.' });
     return;
   }
-  response.writeHead(200, {
+  const headers = {
     'content-type': CONTENT_TYPES.get(extname(file.path).toLowerCase()) ?? 'application/octet-stream',
-    'content-length': file.size,
     'x-content-type-options': 'nosniff',
-  });
+    'accept-ranges': 'bytes',
+  };
+  // Audio needs byte ranges (Safari refuses to play without them).
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+  let start = 0;
+  let end = file.size - 1;
+  let status = 200;
+  if (range && (range[1] || range[2]) && headers['content-type'].startsWith('audio/')) {
+    start = range[1] ? Number(range[1]) : Math.max(file.size - Number(range[2]), 0);
+    end = range[1] && range[2] ? Math.min(Number(range[2]), file.size - 1) : file.size - 1;
+    if (start > end || start >= file.size) {
+      response.writeHead(416, { ...headers, 'content-range': `bytes */${file.size}` });
+      response.end();
+      return;
+    }
+    status = 206;
+    headers['content-range'] = `bytes ${start}-${end}/${file.size}`;
+  }
+  response.writeHead(status, { ...headers, 'content-length': end - start + 1 });
   if (request.method === 'HEAD') {
     response.end();
     return;
   }
-  createReadStream(file.path).on('error', (error) => {
+  createReadStream(file.path, { start, end }).on('error', (error) => {
     if (!response.headersSent) sendJson(response, 500, { error: 'No se pudo servir el archivo.' });
     else response.destroy(error);
   }).pipe(response);

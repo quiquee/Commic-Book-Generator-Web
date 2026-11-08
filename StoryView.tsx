@@ -10,17 +10,20 @@ import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
 import { Credits } from './Credits';
 import { ContinueStory } from './ContinueStory';
+import { moodFor, type Mood } from './music';
 import { localizeText, t } from './i18n';
 
 interface StoryViewProps {
     storyId: string;
     auth: StoryAuth;
     onExit: () => void;
+    // Tells the music player which mood fits this comic (null when leaving it).
+    onMood?: (mood: Mood | null) => void;
 }
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
-export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
+export function StoryView({ storyId, auth, onExit, onMood }: StoryViewProps) {
     const [story, setStory] = useState<StoryDocument | null>(null);
     const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
     const [error, setError] = useState('');
@@ -60,6 +63,15 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
             .catch(failure => { if (!controller.signal.aborted) setError(errorMessage(failure)); });
         return () => controller.abort();
     }, [storyId, auth]);
+
+    // The genre and tone are known once the comic loads: the music follows them.
+    const genre = story?.settings.genre;
+    const tone = story?.tone;
+    useEffect(() => {
+        if (!genre) return;
+        onMood?.(moodFor(genre, tone ?? ''));
+        return () => onMood?.(null);
+    }, [genre, tone]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!story?.title) return;
