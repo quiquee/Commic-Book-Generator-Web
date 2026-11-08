@@ -6,7 +6,7 @@
 import React from 'react';
 import { ComicFace, INITIAL_PAGES, GATE_PAGE } from './types';
 import { LoadingFX } from './LoadingFX';
-import { t } from './i18n';
+import { t, tFor } from './i18n';
 
 interface PanelProps {
     face?: ComicFace;
@@ -20,11 +20,15 @@ interface PanelProps {
     onContinue?: () => void;
     // Number of the issue (2 or more for a continuation); 1 when absent.
     issue?: number;
+    // Story-themed sound effects for the loading screen.
+    soundEffects?: string[];
+    // Language of the comic ('es-ES'): the cover button is written in it.
+    comicLanguage?: string;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, onContinue, issue = 1 }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, onContinue, issue = 1, soundEffects, comicLanguage }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
-    if (face.isLoading && !face.imageUrl) return <LoadingFX />;
+    if (face.isLoading && !face.imageUrl) return <LoadingFX sounds={soundEffects} />;
     
     const isFullBleed = face.type === 'cover' || face.type === 'back_cover';
 
@@ -61,7 +65,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
                      <button onClick={(e) => { e.stopPropagation(); onOpenBook(); }}
                       disabled={!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl}
                       className="comic-btn bg-yellow-400 px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:bg-gray-400 disabled:cursor-wait">
-                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? t('panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : t('panel.readIssue', { issue })}
+                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? tFor(comicLanguage, 'panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : tFor(comicLanguage, 'panel.readIssue', { issue })}
                      </button>
                  </div>
             )}

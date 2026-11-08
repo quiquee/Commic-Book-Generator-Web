@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { LANGUAGES, MAX_STORY_PAGES, type Beat, type ComicFace, type Persona } from './types.ts';
 import type { StorySettings } from './invitations.ts';
-import { mustChangeScene } from './storyLogic.ts';
+import { cleanSoundEffects, mustChangeScene } from './storyLogic.ts';
 
 export const MODEL_TEXT_NAME = 'gemini-3.8-flash';
 export const MODEL_IMAGE_GEN_NAME = 'gemini-nano-banana-2.1';
@@ -299,6 +299,22 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
         caption: parsed.caption, dialogue: parsed.dialogue, scene: parsed.scene, focus_char: parsed.focus_char, choices: parsed.choices,
         new_scene: newScene, ...(setting ? { setting } : {})
     };
+}
+
+// Sound effects for the "drawing the page" screen, tied to this story instead of the generic ones.
+export async function generateSoundEffects(ai: GoogleGenAI, context: StoryContext): Promise<string[]> {
+    const langName = languageName(context.settings.language);
+    const premise = context.settings.genre === 'Custom' ? context.settings.premise : `${context.settings.genre}. ${context.settings.premise || ''}`;
+    const response = await ai.models.generateContent({
+        model: MODEL_TEXT_NAME,
+        contents: `You write the sound effects shown on a comic book loading screen while a page is being drawn.
+Language: ${langName}. Comic title: "${context.title}". Story: ${premise}.
+Return 12 short onomatopoeias or action words, UPPERCASE with exclamation marks (¡...! in Spanish), tied to what happens in THIS story: sounds made by its characters, creatures, places and objects, plus a couple of fun reaction words.
+Rules: 1-2 words each; real sound-effect style (never commands or full verbs in the imperative); avoid the stock ones (POW, BAM, BOOM, ZAS, CRAC, PUM, CATAPLUM, GLUP, CHOF) unless the story really needs them; no duplicates; no character names.
+OUTPUT STRICT JSON ONLY: {"sounds": ["...", "..."]}`,
+        config: { responseMimeType: 'application/json', temperature: 1.1, ...usage('sounds') }
+    });
+    return cleanSoundEffects(parseJson(response.text).sounds);
 }
 
 export interface Recap {

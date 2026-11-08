@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import {
-  apiErrorMessage, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError,
+  apiErrorMessage, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateSoundEffects, generateStyleGuide, isApiKeyError,
   isContentBlockedError,
 } from './generation.ts';
 import { faceId, faceType, findFace, isStoryFinished, nextPageToGenerate, pendingDecision, previousImage, sceneStartImage } from './storyLogic.ts';
@@ -94,6 +94,12 @@ export function createStoryWorker({
       if (!story) return;
       try {
         const ai = aiFor(story);
+        // Themed sound effects for the loading screen; like any Gemini error, a failure stops generation until restarted.
+        if (!story.soundEffects) {
+          const soundEffects = await generateSoundEffects(ai, context(story));
+          if (stopped) return;
+          await updateStory(id, (record) => { record.soundEffects = soundEffects; });
+        }
         if (!story.styleGuide) {
           await setStatus(id, { state: 'styling' });
           const styleGuide = await generateStyleGuide(ai, context(story));

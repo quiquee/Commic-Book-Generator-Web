@@ -41,6 +41,8 @@ export interface StoryMeta extends StorySummary {
     settings: StorySettings;
     tone: string;
     styleGuide: string;
+    // Story-themed sound effects for the page-loading screen (empty: use the generic ones).
+    soundEffects?: string[];
     version: number;
     // Set when this comic is issue 2 or later of a series.
     continuation?: { fromId: string; issue: number; recap: string; direction: string } | null;

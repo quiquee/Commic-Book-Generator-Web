@@ -79,7 +79,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 versionRef.current = Math.max(versionRef.current, delta.version);
                 updateStory(current => ({
                     ...current,
-                    title: delta.title, tone: delta.tone, styleGuide: delta.styleGuide || current.styleGuide,
+                    title: delta.title, tone: delta.tone, styleGuide: delta.styleGuide || current.styleGuide, soundEffects: delta.soundEffects ?? current.soundEffects,
                     completedPages: delta.completedPages, updatedAt: delta.updatedAt, generation: delta.generation,
                     // The server draws every page, so all readers take its version of them.
                     faces: mergeFaces(current.faces, delta.faces, 'guest')
@@ -255,6 +255,8 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onShare={shareLink}
                 onContinue={isOwner && story && isStoryFinished(story.faces) ? () => setContinuing(true) : undefined}
                 issue={story.continuation?.issue}
+                soundEffects={story.soundEffects}
+                comicLanguage={story.settings.language}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
             {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
