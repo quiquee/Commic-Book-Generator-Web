@@ -47,7 +47,7 @@ export const fr: Record<MessageKey, string> = {
     'setup.costarPreview': 'Aperçu du partenaire',
     'setup.uploadCostar': 'AJOUTER LE PARTENAIRE',
     'setup.policy': 'La politique d’utilisation interdite s’applique. Ne crée pas de contenu qui porte atteinte à la vie privée d’autrui.',
-    'setup.story': '2. L’HISTOIRE',
+    'setup.story': '2. CHOISIS LE MODE D’HISTOIRE : PERSONNALISÉE OU PAR GENRE',
     'setup.language': 'LANGUE',
     'title.heading': 'TITRE DE LA BD',
     'title.label': 'Titre de la BD',

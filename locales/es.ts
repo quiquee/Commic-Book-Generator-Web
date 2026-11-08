@@ -46,7 +46,7 @@ export const es = {
     "setup.costarPreview": "Vista previa del coprotagonista",
     "setup.uploadCostar": "SUBIR COPROTAGONISTA",
     "setup.policy": "Se aplica la Política de uso prohibido. No generes contenido que vulnere el derecho a la privacidad de otras personas.",
-    "setup.story": "2. LA HISTORIA",
+    "setup.story": "2. ELIGE EL MODO DE HISTORIA: PERSONALIZADA O POR GÉNERO",
     "setup.language": "IDIOMA",
     "title.heading": "TÍTULO DEL CÓMIC",
     "title.label": "Título del cómic",

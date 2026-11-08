@@ -47,7 +47,7 @@ export const de: Record<MessageKey, string> = {
     'setup.costarPreview': 'Vorschau des Partners',
     'setup.uploadCostar': 'PARTNER HOCHLADEN',
     'setup.policy': 'Es gilt die Richtlinie zur verbotenen Nutzung. Erstelle keine Inhalte, die die Privatsphäre anderer verletzen.',
-    'setup.story': '2. DIE GESCHICHTE',
+    'setup.story': '2. WÄHLE DEN GESCHICHTEN-MODUS: EIGENE ODER NACH GENRE',
     'setup.language': 'SPRACHE',
     'title.heading': 'TITEL DES COMICS',
     'title.label': 'Titel des Comics',

@@ -54,13 +54,13 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
     return (
         <div className="mb-2">
             <div role="radiogroup" aria-label={t('story.kind')} className="grid grid-cols-2 gap-2 mb-2">
-                <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
-                    <span className="font-comic text-lg block">📚 {t('story.genre')}</span>
-                    <span className="text-xs block">{t('story.genreHint')}</span>
-                </button>
                 <button type="button" role="radio" aria-checked={isCustom} onClick={() => onGenreChange('Custom')} className={kindClass(isCustom)}>
                     <span className="font-comic text-lg block">✍️ {t('story.custom')}</span>
                     <span className="text-xs block">{t('story.customHint')}</span>
+                </button>
+                <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
+                    <span className="font-comic text-lg block">📚 {t('story.genre')}</span>
+                    <span className="text-xs block">{t('story.genreHint')}</span>
                 </button>
             </div>
             {isCustom ? (

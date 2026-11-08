@@ -47,7 +47,7 @@ export const en: Record<MessageKey, string> = {
     'setup.costarPreview': 'Co-star preview',
     'setup.uploadCostar': 'UPLOAD CO-STAR',
     'setup.policy': 'The Prohibited Use Policy applies. Do not create content that violates other people’s right to privacy.',
-    'setup.story': '2. THE STORY',
+    'setup.story': '2. CHOOSE THE STORY MODE: YOUR OWN OR BY GENRE',
     'setup.language': 'LANGUAGE',
     'title.heading': 'COMIC TITLE',
     'title.label': 'Comic title',
