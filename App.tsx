@@ -16,6 +16,7 @@ import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
 import { AdminLibrary } from './AdminLibrary';
 import { StoryView } from './StoryView';
+import { clearDraft, loadDraft, saveDraft } from './draft';
 import { MusicPlayer } from './MusicPlayer';
 import type { Mood } from './music';
 import { ContinueStory } from './ContinueStory';
@@ -42,13 +43,15 @@ const App: React.FC = () => {
   const [hero, setHero] = useState<Persona | null>(null);
   const [friend, setFriend] = useState<Persona | null>(null);
   // "Mi historia" (own premise) is the default; the ready-made genres are the alternative.
-  const [selectedGenre, setSelectedGenre] = useState('Custom');
-  const [selectedLanguage, setSelectedLanguage] = useState(defaultComicLanguage);
-  const [customPremise, setCustomPremise] = useState("");
-  const [richMode, setRichMode] = useState(true);
+  // What was typed before a reload comes back (see draft.ts).
+  const [restored] = useState(loadDraft);
+  const [selectedGenre, setSelectedGenre] = useState(restored?.genre ?? 'Custom');
+  const [selectedLanguage, setSelectedLanguage] = useState(restored?.language || defaultComicLanguage);
+  const [customPremise, setCustomPremise] = useState(restored?.premise ?? "");
+  const [richMode, setRichMode] = useState(restored?.richMode ?? true);
   const [castMode, setCastMode] = useState<CastMode>('solo');
   const [activeInvitation, setActiveInvitation] = useState<ActiveInvitation | null>(null);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(restored?.title ?? '');
   const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
   // Groups the calls made before the comic exists (title proposals) so their usage is attributed to it later.
   const [draftId, setDraftId] = useState(newDraftId);
@@ -91,6 +94,12 @@ const App: React.FC = () => {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // Keeps the draft up to date while the setup screen is the one in view.
+  useEffect(() => {
+    if (isTransitioning || route.story || route.join) return;
+    saveDraft({ genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode, title }, defaultComicLanguage);
+  }, [selectedGenre, selectedLanguage, customPremise, richMode, title, isTransitioning, route.story, route.join]);
 
   const resetSetup = useCallback(() => {
     setFriend(null);
@@ -213,6 +222,7 @@ const App: React.FC = () => {
         draftId
       });
       saveStoryKeys([...loadStoryKeys(), created]);
+      clearDraft();
       setDraftId(newDraftId());
       setTimeout(() => {
         resetSetup();
