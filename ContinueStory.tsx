@@ -25,13 +25,22 @@ function nextIssueTitle(title: string, issue: number): string {
     return numbered.length <= 60 ? numbered : `${base.slice(0, 60 - ` #${issue}`.length).trim()} #${issue}`;
 }
 
+// The first "Title #N" (N from the issue number up) that no comic of yours uses yet.
+function freeIssueTitle(title: string, issue: number, taken: string[]): string {
+    for (let number = issue; number < issue + 50; number++) {
+        const candidate = nextIssueTitle(title, number);
+        if (!isTitleTaken(candidate, taken)) return candidate;
+    }
+    return nextIssueTitle(title, issue);
+}
+
 export function ContinueStory({ source, ownerToken, existingTitles, onCancel, onCreated }: ContinueStoryProps) {
     const issue = (source.continuation?.issue ?? 1) + 1;
     const [recap, setRecap] = useState('');
     const [options, setOptions] = useState<string[]>([]);
     const [choice, setChoice] = useState<number | null>(null);
     const [custom, setCustom] = useState('');
-    const [title, setTitle] = useState(() => nextIssueTitle(source.title, issue));
+    const [title, setTitle] = useState(() => freeIssueTitle(source.title, issue, [...loadTitleHistory(), ...existingTitles]));
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
