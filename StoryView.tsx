@@ -228,7 +228,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 {story && isStoryFinished(story.faces) && <button type="button" onClick={downloadPDF} disabled={!hasPages} className="comic-btn bg-blue-500 text-white px-3 py-2 text-lg disabled:bg-gray-400">{t('view.downloadPdf')}</button>}
                 {isOwner && story && isStoryFinished(story.faces) && <button type="button" onClick={() => setContinuing(true)} className="comic-btn bg-red-600 text-white px-3 py-2 text-lg">{t('continue.button')}</button>}
             </div>
-            <div className="fixed top-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
+            <div className="fixed bottom-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
                 {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
                 {isOwner && story?.generation?.state === 'stopped' && (
