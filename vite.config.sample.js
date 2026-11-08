@@ -8,16 +8,13 @@ import react from '@vitejs/plugin-react';
 // The server loads this file as a real ES module (no CommonJS globals), so derive its folder from the URL.
 const root = path.dirname(fileURLToPath(import.meta.url));
 
-const defaultPort = 7000;
-
 // The Gemini API key lives only on the server (proxy at /api/gemini); nothing secret is bundled here.
 export default defineConfig({
   server: {
-    // Default port; PORT in the environment or .env.local overrides it.
-    port: defaultPort,
+    // No port here: it comes only from PORT in .env.local (or the environment).
     host: '0.0.0.0',
-    // Live-reload port follows the real port (7000 -> Vite's default 24678), so copies on other ports do not clash.
-    hmr: { port: Number(process.env.PORT || defaultPort) + 17678 },
+    // Live-reload port follows PORT (7000 -> Vite's default 24678), so copies on other ports do not clash.
+    ...(process.env.PORT ? { hmr: { port: Number(process.env.PORT) + 17678 } } : {}),
     // Host names the dev server accepts; add your own domain when you serve it from one.
     allowedHosts: ['localhost'],
     // The dev server serves any file under the project root: keep Vite's defaults and add the data folder
