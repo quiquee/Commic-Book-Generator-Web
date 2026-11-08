@@ -47,7 +47,7 @@ export const gl: Record<MessageKey, string> = {
     'setup.costarPreview': 'Vista previa do coprotagonista',
     'setup.uploadCostar': 'SUBIR COPROTAGONISTA',
     'setup.policy': 'Aplícase a Política de uso prohibido. Non xeres contido que vulnere o dereito á privacidade doutras persoas.',
-    'setup.story': '2. ESCOLLE O MODO DE HISTORIA: PERSONALIZADA OU POR XÉNERO',
+    'setup.story': '2. MODO DE HISTORIA: PERSONALIZADA OU ESTÁNDAR',
     'setup.language': 'IDIOMA',
     'title.heading': 'TÍTULO DO CÓMIC',
     'title.label': 'Título do cómic',
