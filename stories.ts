@@ -42,6 +42,8 @@ export interface StoryMeta extends StorySummary {
     tone: string;
     styleGuide: string;
     version: number;
+    // Set when this comic is issue 2 or later of a series.
+    continuation?: { fromId: string; issue: number; recap: string; direction: string } | null;
     role: 'owner' | 'guest' | 'reader';
     generation: GenerationStatus | null;
     // Only sent to the owner.
@@ -171,6 +173,8 @@ export interface CreateStoryBody {
     tone: string;
     invitation: { id: string; ownerToken: string; responseId?: string } | null;
     draftId?: string;
+    // Makes this comic the next issue of a finished one (the server copies its cast, look and settings).
+    continuation?: { fromId: string; token: string; recap: string; direction: string };
 }
 
 // crypto.randomUUID() is unavailable on plain-http LAN addresses, so build a v4 UUID from getRandomValues.

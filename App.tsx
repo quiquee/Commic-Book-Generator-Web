@@ -16,6 +16,7 @@ import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
 import { AdminLibrary } from './AdminLibrary';
 import { StoryView } from './StoryView';
+import { ContinueStory } from './ContinueStory';
 import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
 import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument } from './stories';
 import { apiErrorMessage, createAI, fatalGenerationMessage, generateTitleCandidates, isApiKeyError } from './generation';
@@ -59,6 +60,9 @@ const App: React.FC = () => {
   const [setupRevision, setSetupRevision] = useState(0);
   // Set by «Rehacer»: the comic whose parameters were loaded, its tone and its invitation (if still saved here).
   const [redoSource, setRedoSource] = useState<{ title: string; genre: string; tone: string; invitationId: string | null } | null>(null);
+
+  // Finished comic whose next issue is being planned from the library.
+  const [continueSource, setContinueSource] = useState<{ story: StoryDocument; ownerToken: string } | null>(null);
 
   const loadSavedHero = useCallback(() => {
     try {
@@ -368,12 +372,11 @@ const App: React.FC = () => {
             onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
             onPropose: proposeTitle
           }}
-      >
-          {!isTransitioning && <>
-            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onRedo={redoStory} onTitlesLoaded={setLibraryTitles} />
+          belowLaunch={!isTransitioning && <>
+            <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onRedo={redoStory} onContinue={(story, ownerToken) => setContinueSource({ story, ownerToken })} onTitlesLoaded={setLibraryTitles} />
             <AdminLibrary key={`admin-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} />
           </>}
-      </Setup>
+      />
       <Book comicFaces={[]} currentSheetIndex={0} isStarted={false} isSetupVisible={!isTransitioning} onSheetClick={() => {}} onChoice={() => {}} onOpenBook={() => {}} onDownload={() => {}} onReset={() => {}} />
     </>;
   }
@@ -384,6 +387,7 @@ const App: React.FC = () => {
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
           {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>
       </div>}
+      {continueSource && <ContinueStory source={continueSource.story} ownerToken={continueSource.ownerToken} existingTitles={libraryTitles} onCancel={() => setContinueSource(null)} />}
       {showApiKeyDialog && <ApiKeyDialog onContinue={handleApiKeyDialogContinue} />}
       {content}
     </div>

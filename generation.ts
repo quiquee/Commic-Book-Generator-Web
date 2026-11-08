@@ -14,6 +14,8 @@ export interface StoryContext {
     tone: string;
     styleGuide: string;
     title: string;
+    // Set for issue 2 onwards: what happened before and the direction the readers chose.
+    continuation?: { issue: number; recap: string; direction: string } | null;
 }
 
 export interface TitleRequest {
@@ -196,6 +198,11 @@ export async function generateBeat(
     4. CONTINUITY: Characters keep the SAME clothes, hairstyle and accessories described in the CHARACTER BIBLE unless the story explicitly changes them. Locations and time of day must follow logically from the previous page.
     `;
 
+    const continuation = context.continuation;
+    const previousIssue = continuation
+        ? `\nPREVIOUS ISSUE (this is ISSUE ${continuation.issue}; do NOT retell it):\n${continuation.recap}\nDIRECTION CHOSEN BY THE READERS FOR THIS ISSUE: "${continuation.direction}"\n`
+        : '';
+
     let instruction = `Continue the story. ALL OUTPUT TEXT (Captions, Dialogue, Choices) MUST BE IN ${langName.toUpperCase()}. ${coreDriver(settings, tone)} ${guardrails}`;
     if (settings.richMode) {
         instruction += ' RICH/NOVEL MODE ENABLED. Prioritize deeper character thoughts, descriptive captions, and meaningful dialogue exchanges over short punchlines.';
@@ -210,6 +217,8 @@ export async function generateBeat(
         instruction += ` FINAL PAGE. KARMIC CLIFFHANGER REQUIRED. You MUST explicitly reference the readers' choice${resolvedDecision ? ` ("${resolvedDecision.resolvedChoice}")` : ''} in the narrative and show how that specific philosophy led to this conclusion. Text must end with 'TO BE CONTINUED...' (or localized equivalent).`;
     } else if (isDecisionPage) {
         instruction += ' End with a PSYCHOLOGICAL choice about VALUES, RELATIONSHIPS, or RISK. (e.g., Truth vs. Safety, Forgive vs. Avenge). The options must NOT be simple physical actions like \'Go Left\'.';
+    } else if (pageNum === 1 && continuation) {
+        instruction += ` NEW ISSUE OPENING. Pick up right after the previous issue's cliffhanger and start moving in the chosen direction ("${continuation.direction}"). Do not recap at length; one caption of context at most.`;
     } else if (pageNum === 1) {
         instruction += ' INCITING INCIDENT. An event disrupts the status quo. Establish the genre\'s intended mood. (If Slice of Life: A social snag/surprise. If Adventure: A call to action).';
     } else if (pageNum <= 4) {
@@ -236,7 +245,7 @@ CHARACTERS:
 CHARACTER BIBLE (visual continuity, keep consistent):
 ${context.styleGuide || 'Not defined yet. Keep clothing consistent with earlier pages.'}
 
-PREVIOUS PANELS (READ CAREFULLY):
+${previousIssue}PREVIOUS PANELS (READ CAREFULLY):
 ${historyText.length > 0 ? historyText : 'Start the adventure.'}
 
 RULES:
@@ -274,6 +283,45 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     parsed.choices = isDecisionPage && !isFinalPage ? (choices.length >= 2 ? choices : ['Opción A', 'Opción B']) : [];
     if (!['hero', 'friend', 'other'].includes(parsed.focus_char)) parsed.focus_char = 'hero';
     return { caption: parsed.caption, dialogue: parsed.dialogue, scene: parsed.scene, focus_char: parsed.focus_char, choices: parsed.choices };
+}
+
+export interface Recap {
+    recap: string;
+    options: string[];
+}
+
+// Summarises the finished issue and proposes directions for the next one. Earlier issues arrive as `previousRecap`.
+export async function generateRecap(ai: GoogleGenAI, context: StoryContext, faces: ComicFace[]): Promise<Recap> {
+    const langName = languageName(context.settings.language);
+    const pages = faces
+        .filter(face => face.type === 'story' && face.narrative)
+        .sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0))
+        .map(face => `[Page ${face.pageIndex}] (Caption: "${face.narrative?.caption || ''}") (Dialogue: "${face.narrative?.dialogue || ''}") (Scene: ${face.narrative?.scene})${face.resolvedChoice ? ` -> READERS CHOSE: "${face.resolvedChoice}"` : ''}`)
+        .join('\n');
+    const earlier = context.continuation ? `STORY BEFORE THIS ISSUE:\n${context.continuation.recap}\n\n` : '';
+    const prompt = `
+You are the editor of a comic book series. ${coreDriver(context.settings, context.tone)}
+ISSUE TITLE: "${context.title}". Cast: "${context.hostName || 'the hero'}"${context.guestName ? ` and "${context.guestName}"` : ''}.
+${earlier}PAGES OF THE ISSUE JUST FINISHED:
+${pages}
+
+Write, IN ${langName.toUpperCase()}:
+1. "recap": a summary of the whole story so far in 4 to 6 sentences (max 900 characters), including the readers' choice and how the issue ended. Use the characters' names.
+2. "options": exactly 3 clearly different directions for the NEXT issue, each one sentence (max 140 characters) about VALUES, RELATIONSHIPS or RISK, not simple physical actions.
+
+OUTPUT STRICT JSON ONLY: { "recap": "...", "options": ["...", "...", "..."] }`;
+    const response = await ai.models.generateContent({
+        model: MODEL_TEXT_NAME,
+        contents: prompt,
+        config: { responseMimeType: 'application/json', ...usage('recap') }
+    });
+    const parsed = parseJson(response.text);
+    const recap = typeof parsed.recap === 'string' ? parsed.recap.trim().slice(0, 2900) : '';
+    const options = Array.isArray(parsed.options)
+        ? parsed.options.filter((option: unknown) => typeof option === 'string' && option.trim()).map((option: string) => option.trim().slice(0, 200)).slice(0, 3)
+        : [];
+    if (!recap || options.length < 2) throw new Error('No se pudo resumir la historia.');
+    return { recap, options };
 }
 
 export async function generatePersona(ai: GoogleGenAI, context: StoryContext, desc: string): Promise<Persona> {

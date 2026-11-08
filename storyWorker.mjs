@@ -22,6 +22,7 @@ function context(story) {
   return {
     hero: story.hero, friend: story.friend, hostName: story.hostName, guestName: story.guestName,
     settings: story.settings, tone: story.tone, styleGuide: story.styleGuide, title: story.title,
+    continuation: story.continuation ?? null,
   };
 }
 
