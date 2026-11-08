@@ -1,3 +1,5 @@
+// Sample Vite config. Copy it to vite.config.js (which is not tracked) and adjust it for your server:
+//   cp vite.config.sample.js vite.config.js
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
@@ -9,12 +11,12 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 // The Gemini API key lives only on the server (proxy at /api/gemini); nothing secret is bundled here.
 export default defineConfig({
   server: {
-    // Default port; PORT in .env.local overrides it (the i18n test copy uses PORT=7002).
-    port: 7000,
+    // No port here: it comes only from PORT in .env.local (or the environment).
     host: '0.0.0.0',
     // Live-reload port follows PORT (7000 -> Vite's default 24678), so copies on other ports do not clash.
-    hmr: { port: Number(process.env.PORT || 7000) + 17678 },
-    allowedHosts: ['mundoscruzados.com','bicho','comic.hcpartners.ch','localhost'],
+    ...(process.env.PORT ? { hmr: { port: Number(process.env.PORT) + 17678 } } : {}),
+    // Host names the dev server accepts; add your own domain when you serve it from one.
+    allowedHosts: ['localhost'],
     // The dev server serves any file under the project root: keep Vite's defaults and add the data folder
     // (comics, invitations, keys, audit log). server.mjs blocks these paths too.
     fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.data/**'] },

@@ -3,7 +3,7 @@ import {
   apiErrorMessage, fatalGenerationMessage, generateBeat, generateImage, generatePersona, generateStyleGuide, isApiKeyError,
   isContentBlockedError,
 } from './generation.ts';
-import { faceId, faceType, findFace, isStoryFinished, nextPageToGenerate, pendingDecision, previousImage } from './storyLogic.ts';
+import { faceId, faceType, findFace, isStoryFinished, nextPageToGenerate, pendingDecision, previousImage, sceneStartImage } from './storyLogic.ts';
 import { DECISION_PAGES } from './types.ts';
 
 // Re-encodes a generated image (data URL or bare base64) as a bounded JPEG, as the browser used to do.
@@ -82,7 +82,7 @@ export function createStoryWorker({
       story = await putFace(story.id, face) ?? story;
     }
 
-    const raw = await generateImage(ai, context(story), beat, type, previousImage(story.faces, pageIndex), pageIndex);
+    const raw = await generateImage(ai, context(story), beat, type, previousImage(story.faces, pageIndex), pageIndex, sceneStartImage(story.faces, pageIndex));
     if (stopped) return;
     face = { ...face, imageUrl: `data:image/jpeg;base64,${await toJpegBase64(raw)}`, isLoading: false };
     await putFace(story.id, face);

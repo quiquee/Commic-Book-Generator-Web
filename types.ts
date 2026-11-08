@@ -10,6 +10,8 @@ export const INITIAL_PAGES = 2;
 export const GATE_PAGE = 2;
 export const BATCH_SIZE = 6;
 export const DECISION_PAGES = [3];
+// A location is drawn on at most this many consecutive pages before the story moves on.
+export const MAX_SCENE_PAGES = 3;
 
 export const GENRES = ["Classic Horror", "Superhero Action", "Dark Sci-Fi", "High Fantasy", "Neon Noir Detective", "Wasteland Apocalypse", "Lighthearted Comedy", "Teen Drama / Slice of Life", "Custom"];
 export const TONES = [
@@ -49,6 +51,10 @@ export interface Beat {
   scene: string;
   choices: string[];
   focus_char: 'hero' | 'friend' | 'other';
+  // false when the page stays in the location of the previous one; absent in comics made before this existed.
+  new_scene?: boolean;
+  // Fixed physical description of the location (English), repeated while the scene lasts.
+  setting?: string;
 }
 
 export interface Persona {
