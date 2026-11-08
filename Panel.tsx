@@ -37,7 +37,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             {face.imageUrl && onShare && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); onShare(); }}
                   aria-label={t('panel.shareLink')}
-                  className="absolute top-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
+                  className="absolute bottom-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
                     {t('panel.share')}
                 </button>
             )}
