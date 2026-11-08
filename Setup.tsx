@@ -116,12 +116,7 @@ interface SetupProps {
     belowLaunch?: React.ReactNode;
     titleField?: {
         value: string;
-        busy: boolean;
-        stale: boolean;
-        // Overrides the hint under the field (e.g. for the default title).
-        note?: string;
         onChange: (value: string) => void;
-        onPropose: () => void;
     };
 }
 
@@ -275,15 +270,8 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                 {props.titleField && !props.guestMode && (
                                     <div className="mb-2">
                                         <p className="font-comic text-base mb-1 font-bold text-gray-800">{t('title.heading')}</p>
-                                        <div className="flex gap-2">
-                                            <input aria-label={t('title.label')} maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder={t('title.placeholder')} className="flex-1 min-w-0 p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
-                                            <button type="button" onClick={props.titleField.onPropose} disabled={props.titleField.busy || props.isTransitioning} className="comic-btn bg-purple-600 text-white text-sm px-3 py-1 whitespace-nowrap disabled:bg-gray-400">
-                                                {props.titleField.busy ? t('title.searching') : props.titleField.value ? t('title.another') : t('title.propose')}
-                                            </button>
-                                        </div>
-                                        <p className="text-xs text-gray-700 mt-1">
-                                            {props.titleField.note ?? (props.titleField.stale ? t('title.stale') : t('title.hint'))}
-                                        </p>
+                                        <input aria-label={t('title.label')} required maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder={t('title.placeholder')} className="w-full p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                                        <p className="text-xs text-gray-700 mt-1">{t('title.hint')}</p>
                                     </div>
                                 )}
                             </div>
