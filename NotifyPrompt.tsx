@@ -10,7 +10,7 @@ interface NotifyPromptProps {
     active: boolean;
 }
 
-const PROMPT_DELAY_MS = 20_000;
+const PROMPT_DELAY_MS = 3_000;
 const dismissedKey = 'infinite-heroes.notify-dismissed';
 const DISMISS_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -45,30 +45,29 @@ function recentlyDismissed(): boolean {
 // After a short while on an unfinished comic, offers to notify when it ends or needs a decision.
 // With permission already granted it subscribes silently, so later comics need no prompt.
 export function NotifyPrompt({ storyId, auth, active }: NotifyPromptProps) {
-    const [show, setShow] = useState<'ask' | 'ios' | null>(null);
+    const [show, setShow] = useState<'ask' | 'ios' | 'info' | null>(null);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState('');
 
     useEffect(() => {
         if (!active) { setShow(null); return; }
-        if (!pushSupported()) {
-            // On iPhone the Push API only appears when the site was added to the home screen.
-            if (!isIOS() || !window.isSecureContext || recentlyDismissed()) return;
-            const timer = setTimeout(() => setShow('ios'), PROMPT_DELAY_MS);
-            return () => clearTimeout(timer);
-        }
-        if (Notification.permission === 'granted') {
-            subscribe(storyId, auth).catch(() => { /* notices are optional */ });
-            return;
-        }
-        if (Notification.permission === 'denied' || recentlyDismissed()) return;
-        const timer = setTimeout(() => setShow('ask'), PROMPT_DELAY_MS);
+        const granted = pushSupported() && Notification.permission === 'granted';
+        // With permission already granted it subscribes silently, so later comics need no prompt.
+        if (granted) subscribe(storyId, auth).catch(() => { /* notices are optional */ });
+        if (recentlyDismissed()) return;
+        const timer = setTimeout(() => setShow(pushSupported() ? 'ask' : isIOS() && window.isSecureContext ? 'ios' : 'info'), PROMPT_DELAY_MS);
         return () => clearTimeout(timer);
     }, [active, storyId, auth]);
 
     const dismiss = () => {
         try { localStorage.setItem(dismissedKey, String(Date.now())); } catch { /* ignore */ }
         setShow(null);
+    };
+
+    // Closing the notice is what asks the browser for permission to notify.
+    const close = () => {
+        dismiss();
+        if (show === 'ask' && Notification.permission === 'default') void accept();
     };
 
     const accept = async () => {
@@ -98,20 +97,14 @@ export function NotifyPrompt({ storyId, auth, active }: NotifyPromptProps) {
     if (!show) return null;
 
     return (
-        <div role="dialog" aria-labelledby="notify-title" className="fixed bottom-4 inset-x-4 z-[600] mx-auto max-w-md bg-yellow-50 border-4 border-black p-4 shadow-[8px_8px_0px_black] text-left">
-            <h2 id="notify-title" className="font-comic text-2xl">🔔 {t('notify.title')}</h2>
-            {show === 'ask' ? <>
-                <p className="text-sm my-2">{t('notify.body')}</p>
-                <div className="flex gap-2 justify-end">
-                    <button type="button" onClick={dismiss} disabled={busy} className="comic-btn bg-gray-200 text-black px-3 py-2">{t('notify.later')}</button>
-                    <button type="button" onClick={accept} disabled={busy} className="comic-btn bg-red-600 text-white px-3 py-2">{busy ? t('notify.enabling') : t('notify.accept')}</button>
-                </div>
-            </> : <>
-                <p className="text-sm my-2">{t('notify.ios')}</p>
-                <div className="flex justify-end">
-                    <button type="button" onClick={dismiss} className="comic-btn bg-gray-200 text-black px-3 py-2">{t('notify.ok')}</button>
-                </div>
-            </>}
+        <div className="fixed inset-0 z-[600] bg-black/60 flex items-center justify-center p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="notify-title" className="relative w-full max-w-md bg-yellow-50 border-4 border-black p-6 pt-8 shadow-[8px_8px_0px_black] text-left">
+                <button type="button" onClick={close} aria-label={t('common.close')} disabled={busy}
+                  className="absolute -top-5 -right-5 w-11 h-11 rounded-full bg-red-600 text-white border-4 border-black font-comic text-2xl leading-none flex items-center justify-center shadow-[3px_3px_0px_black] hover:scale-110">✕</button>
+                <h2 id="notify-title" className="font-comic text-4xl mb-3">🔔 {t('notify.title')}</h2>
+                <p className="text-xl">{show === 'ios' ? t('notify.ios') : t('notify.body')}</p>
+                {show === 'ask' && <p className="text-base mt-3 text-gray-700">{t('notify.hint')}</p>}
+            </div>
         </div>
     );
 }

@@ -222,6 +222,7 @@ export const de: Record<MessageKey, string> = {
     'notify.accept': 'Benachrichtigen',
     'notify.ios': 'Auf dem iPhone füge diese Website zum Home-Bildschirm hinzu (Teilen-Taste → „Zum Home-Bildschirm“) und öffne sie von dort, um benachrichtigt zu werden, wenn der Comic fertig ist.',
     'notify.ok': 'Verstanden',
+    'notify.hint': 'Wenn du diesen Hinweis schließt, fragt dein Browser nach der Erlaubnis für Benachrichtigungen: Bitte erlaube sie.',
     'error.baseUrl': 'Gib eine gültige Basis-URL ein, zum Beispiel https://comics.example.com.',
     'error.copyLink': 'Der Link konnte nicht kopiert werden.',
     'error.invitationServer': 'Der Einladungsserver ist nicht verfügbar. Starte die App mit npm run dev oder npm start.',

@@ -221,6 +221,7 @@ export const es = {
     "notify.accept": "Avisarme",
     "notify.ios": "En iPhone, para recibir un aviso cuando el cómic esté listo, añade esta web a la pantalla de inicio (botón Compartir → «Añadir a pantalla de inicio») y ábrela desde allí.",
     "notify.ok": "Entendido",
+    "notify.hint": "Al cerrar este aviso, tu navegador te pedirá permiso para enviar notificaciones: acéptalo.",
     "error.baseUrl": "Introduce una URL base válida, por ejemplo https://comics.example.com.",
     "error.copyLink": "No se pudo copiar el enlace.",
     "error.invitationServer": "El servidor de invitaciones no está disponible. Arranca la aplicación con npm run dev o npm start.",

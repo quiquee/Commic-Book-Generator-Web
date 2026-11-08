@@ -222,6 +222,7 @@ export const gl: Record<MessageKey, string> = {
     'notify.accept': 'Avisarme',
     'notify.ios': 'No iPhone, para recibir un aviso cando o cómic estea listo, engade esta web á pantalla de inicio (botón Compartir → «Engadir á pantalla de inicio») e ábrea dende alí.',
     'notify.ok': 'Entendido',
+    'notify.hint': 'Ao pechar este aviso, o teu navegador pedirache permiso para enviar notificacións: acéptao.',
     'error.baseUrl': 'Introduce un URL base válido, por exemplo https://comics.example.com.',
     'error.copyLink': 'Non se puido copiar a ligazón.',
     'error.invitationServer': 'O servidor de convites non está dispoñible. Arrinca a aplicación con npm run dev ou npm start.',

@@ -222,6 +222,7 @@ export const fr: Record<MessageKey, string> = {
     'notify.accept': 'Me prévenir',
     'notify.ios': 'Sur iPhone, pour être prévenu quand la BD est prête, ajoute ce site à l’écran d’accueil (bouton Partager → « Sur l’écran d’accueil ») et ouvre-le depuis là.',
     'notify.ok': 'Compris',
+    'notify.hint': 'À la fermeture de cet avis, ton navigateur te demandera l’autorisation d’envoyer des notifications : accepte-la.',
     'error.baseUrl': 'Saisis une URL de base valide, par exemple https://comics.example.com.',
     'error.copyLink': 'Impossible de copier le lien.',
     'error.invitationServer': 'Le serveur d’invitations n’est pas disponible. Lance l’application avec npm run dev ou npm start.',

@@ -230,7 +230,6 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
             </div>
             <div className="fixed top-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
                 {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
-                {inProgress && !pendingDecision(story!.faces) && <p className="text-xs text-white bg-black/60 px-2 py-0.5">{t('view.canClose')}</p>}
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
                 {isOwner && story?.generation?.state === 'stopped' && (
                     <div className="pointer-events-auto flex flex-wrap justify-center gap-2 mt-2">

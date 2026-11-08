@@ -222,6 +222,7 @@ export const en: Record<MessageKey, string> = {
     'notify.accept': 'Notify me',
     'notify.ios': 'On iPhone, to get a notification when the comic is ready, add this site to your Home Screen (Share button → “Add to Home Screen”) and open it from there.',
     'notify.ok': 'Got it',
+    'notify.hint': 'When you close this notice, your browser will ask permission to send notifications: please accept it.',
     'error.baseUrl': 'Enter a valid base URL, for example https://comics.example.com.',
     'error.copyLink': 'The link could not be copied.',
     'error.invitationServer': 'The invitation server is not available. Start the app with npm run dev or npm start.',
