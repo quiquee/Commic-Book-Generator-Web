@@ -32,6 +32,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [continuing, setContinuing] = useState(false);
+    const [statusHidden, setStatusHidden] = useState(false);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
@@ -225,7 +226,13 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     return (
         <>
             <div className="fixed bottom-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
-                {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
+                {story && !statusHidden && (
+                    <p role="status" className="pointer-events-auto flex items-center gap-3 font-comic text-lg text-white bg-black/70 pl-3 pr-1 py-1 border-2 border-yellow-400">
+                        <span>{story.title} · {statusText}</span>
+                        <button type="button" onClick={() => setStatusHidden(true)} aria-label={t('common.close')}
+                          className="shrink-0 w-7 h-7 rounded-full bg-red-600 text-white border-2 border-black text-base leading-none flex items-center justify-center hover:scale-110">✕</button>
+                    </p>
+                )}
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
                 {isOwner && story?.generation?.state === 'stopped' && (
                     <div className="pointer-events-auto flex flex-wrap justify-center gap-2 mt-2">
