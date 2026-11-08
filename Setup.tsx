@@ -33,7 +33,6 @@ const GENRE_ICONS: Record<string, string> = {
     'Teen Drama / Slice of Life': '🎒'
 };
 
-const PREMISE_IDEAS: MessageKey[] = ['idea.ant', 'idea.mars', 'idea.museum', 'idea.cat'];
 
 interface StoryPickerProps {
     selectedGenre: string;
@@ -69,16 +68,6 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
                     <textarea aria-label={t('story.premiseLabel')} value={customPremise} onChange={(e) => onPremiseChange(e.target.value)} maxLength={2000}
                         placeholder={t('story.premisePlaceholder')}
                         className="w-full p-2 border-2 border-black font-comic text-lg h-28 resize-none bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
-                    {!readOnly && (
-                        <div className="mt-1">
-                            <p className="text-xs text-gray-700">{t('story.ideasHint')}</p>
-                            <div className="flex flex-col gap-1 mt-1">
-                                {PREMISE_IDEAS.map(idea => (
-                                    <button key={idea} type="button" onClick={() => onPremiseChange(t(idea))} className="text-left text-xs border border-black bg-white px-2 py-1 hover:bg-yellow-100">{t(idea)}</button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             ) : (
                 <div role="radiogroup" aria-label={t('story.genreLabel')} className="grid grid-cols-2 gap-1">
