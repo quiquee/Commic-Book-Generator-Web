@@ -12,8 +12,13 @@
    It restarts by itself (`node --watch`) when a server file changes; Vite
    already reloads the browser code. Comics being drawn resume after the restart.
 
+`vite.config.js` is local to each install and is not in git. Create it from the
+sample (`cp vite.config.sample.js vite.config.js`) and put your own host names in
+`allowedHosts`; without it the server falls back to the sample, but `npm run build`
+needs the real file.
+
 The Node.js server runs both Vite and the invitation API at
-the port and interface from `server.port` / `server.host` in `vite.config.ts`
+the port and interface from `server.port` / `server.host` in `vite.config.js`
 (currently `http://localhost:7000`). `PORT` or `HOST` in the environment or
 `.env.local` override them; if Vite is not installed (e.g. `npm ci --omit=dev`),
 the defaults are port 3000 on `0.0.0.0`.

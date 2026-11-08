@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -422,6 +422,12 @@ async function serveStatic(request, response, root) {
     if (!response.headersSent) sendJson(response, 500, { error: 'No se pudo servir el archivo.' });
     else response.destroy(error);
   }).pipe(response);
+}
+
+// vite.config.js is local to each install (not in git); a fresh clone falls back to the sample.
+function viteConfigFile() {
+  const local = join(process.cwd(), 'vite.config.js');
+  return existsSync(local) ? local : join(process.cwd(), 'vite.config.sample.js');
 }
 
 export function createAppServer({
@@ -1266,7 +1272,7 @@ export function createAppServer({
   function initializeVite() {
     if (!vitePromise) {
       vitePromise = import('vite').then(({ createServer: createViteServer }) => createViteServer({
-        configFile: join(process.cwd(), 'vite.config.ts'),
+        configFile: viteConfigFile(),
         // The default loader writes and deletes a temporary file, which `node --watch` takes as a change.
         configLoader: 'runner',
         server: { middlewareMode: true },
@@ -1364,7 +1370,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const { loadConfigFromFile } = await import('vite');
     const loaded = await loadConfigFromFile(
       { command: 'serve', mode: dev ? 'development' : 'production' },
-      join(process.cwd(), 'vite.config.ts'),
+      viteConfigFile(),
       process.cwd(),
       'silent',
       undefined,

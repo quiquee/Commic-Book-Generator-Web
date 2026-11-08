@@ -1,3 +1,5 @@
+// Sample Vite config. Copy it to vite.config.js (which is not tracked) and adjust it for your server:
+//   cp vite.config.sample.js vite.config.js
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
@@ -14,7 +16,8 @@ export default defineConfig({
     host: '0.0.0.0',
     // Live-reload port follows PORT (7000 -> Vite's default 24678), so copies on other ports do not clash.
     hmr: { port: Number(process.env.PORT || 7000) + 17678 },
-    allowedHosts: ['mundoscruzados.com','bicho','comic.hcpartners.ch','localhost'],
+    // Host names the dev server accepts; add your own domain when you serve it from one.
+    allowedHosts: ['localhost'],
     // The dev server serves any file under the project root: keep Vite's defaults and add the data folder
     // (comics, invitations, keys, audit log). server.mjs blocks these paths too.
     fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.data/**'] },

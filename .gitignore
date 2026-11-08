@@ -23,3 +23,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Vite config (copy of vite.config.sample.js)
+vite.config.js
