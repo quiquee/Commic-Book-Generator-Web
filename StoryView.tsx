@@ -268,7 +268,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                     </form>
                 </div>
             )}
-            {continuing && story && auth.kind === 'owner' && <ContinueStory source={story} ownerToken={auth.token} existingTitles={[]} onCancel={() => setContinuing(false)} />}
+            {continuing && story && auth.kind === 'owner' && <ContinueStory source={story} ownerToken={auth.token} existingTitles={[]} onCancel={() => setContinuing(false)} onCreated={() => setContinuing(false)} />}
             {showCredits && <Credits onDone={onExit} />}
         </>
     );

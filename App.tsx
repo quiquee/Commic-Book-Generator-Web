@@ -387,7 +387,7 @@ const App: React.FC = () => {
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
           {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>
       </div>}
-      {continueSource && <ContinueStory source={continueSource.story} ownerToken={continueSource.ownerToken} existingTitles={libraryTitles} onCancel={() => setContinueSource(null)} />}
+      {continueSource && <ContinueStory source={continueSource.story} ownerToken={continueSource.ownerToken} existingTitles={libraryTitles} onCancel={() => setContinueSource(null)} onCreated={() => setContinueSource(null)} />}
       {showApiKeyDialog && <ApiKeyDialog onContinue={handleApiKeyDialogContinue} />}
       {content}
     </div>
