@@ -171,7 +171,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         pages.forEach((face, index) => {
             if (index > 0) doc.addPage([480, 720], 'portrait');
             doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
-            addSiteLink(doc, face.type, 480, 720);
+            addSiteLink(doc, face.type, 480, 720, story.settings.language);
         });
         doc.save(`${titleSlug(story.title)}.pdf`);
     };
