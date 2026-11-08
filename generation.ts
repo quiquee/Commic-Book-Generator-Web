@@ -234,7 +234,7 @@ export async function generateBeat(
     const previousSetting = lastPage?.narrative?.setting?.trim() ?? '';
     instruction += forceNewScene
         ? ' LOCATION: this page MUST take place in a NEW location (new_scene = true); move the story somewhere clearly different, with a natural transition.'
-        : ' LOCATION: the previous page was the first in its location. You may stay in it (new_scene = false) or move on (new_scene = true); stay only if the action really continues there.';
+        : ' LOCATION: the current location has not reached its page limit. You may stay in it (new_scene = false) or move on (new_scene = true); stay only if the action really continues there.';
 
     const capLimit = settings.richMode ? 'max 35 words. Detailed narration or internal monologue' : 'max 15 words';
     const diaLimit = settings.richMode ? 'max 30 words. Rich, character-driven speech' : 'max 12 words';
@@ -291,7 +291,7 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     const choices = Array.isArray(parsed.choices) ? parsed.choices.filter((choice: unknown) => typeof choice === 'string' && choice.trim()).map((choice: string) => choice.trim().slice(0, 200)).slice(0, 4) : [];
     parsed.choices = isDecisionPage && !isFinalPage ? (choices.length >= 2 ? choices : ['Opción A', 'Opción B']) : [];
     if (!['hero', 'friend', 'other'].includes(parsed.focus_char)) parsed.focus_char = 'hero';
-    // The rule is enforced here too: Gemini may not keep the same place for more than two pages.
+    // The rule is enforced here too: Gemini may not keep the same place for more than MAX_SCENE_PAGES pages.
     let setting = typeof parsed.setting === 'string' ? parsed.setting.trim().slice(0, 900) : '';
     const newScene = forceNewScene || parsed.new_scene !== false || (!setting && !previousSetting);
     if (!newScene && !setting) setting = previousSetting;
@@ -358,18 +358,23 @@ export async function generateImage(
     beat: Beat,
     type: ComicFace['type'],
     previousImage: string | null,
-    pageIndex: number
+    pageIndex: number,
+    // First image of the current location, to keep it identical over a long scene.
+    sceneImage: string | null = null
 ): Promise<string> {
     const contents: any[] = [{ text: 'REFERENCE 1 [HERO] (real face to reproduce):' }, inlineJpeg(context.hero.base64)];
     if (context.friend) contents.push({ text: 'REFERENCE 2 [CO-STAR] (real face to reproduce):' }, inlineJpeg(context.friend.base64));
     if (previousImage) contents.push({ text: 'REFERENCE 3 [PREVIOUS PAGE] (copy the exact art style, costumes, hairstyles, colors and lighting; continue from this moment):' }, inlineJpeg(previousImage));
+
+    const sameScene = beat.new_scene === false && type === 'story';
+    if (sameScene && sceneImage) contents.push({ text: 'REFERENCE 4 [LOCATION] (the first image of this location: copy its architecture, windows, doors, furniture, props and colors exactly):' }, inlineJpeg(sceneImage));
 
     const styleEra = context.settings.genre === 'Custom' ? 'Modern American' : context.settings.genre;
     const langName = languageName(context.settings.language);
     let promptText = `STYLE: ${styleEra} comic book art, detailed ink, vibrant colors. ALL PRINTED TEXT MUST BE IN ${langName.toUpperCase()}. `;
     if (context.styleGuide) promptText += `CHARACTER BIBLE (mandatory, identical on every page): ${context.styleGuide} `;
     // Legacy pages have no new_scene flag and keep the old behaviour.
-    const sameScene = type === 'story' && !!previousImage && beat.new_scene === false;
+    const keepLocation = sameScene && !!previousImage;
     const changedScene = type === 'story' && !!previousImage && beat.new_scene === true;
     if (previousImage) promptText += 'CONTINUITY: REFERENCE 3 is the previous page of this same issue. Keep every character looking exactly like there (same outfit, hair, accessories, proportions) and keep the same rendering technique. ';
 
@@ -379,7 +384,7 @@ export async function generateImage(
         promptText += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser for the next issue of "${context.title}". Text: a localized translation of "NEXT ISSUE SOON" in ${langName}, plus the title "${context.title}" in smaller lettering.`;
     } else {
         promptText += `TYPE: Vertical comic panel. SCENE: ${beat.scene}. `;
-        if (sameScene) promptText += `SAME LOCATION AS REFERENCE 3: keep exactly the same architecture, shape and position of windows and doors, furniture, props, wall and floor colors, lighting and time of day. Only the characters' poses, the framing and the camera angle change. LOCATION DETAILS: ${beat.setting ?? ''}. `;
+        if (keepLocation) promptText += `SAME LOCATION AS REFERENCE 3${sceneImage ? ' AND REFERENCE 4' : ''}: keep exactly the same architecture, shape and position of windows and doors, furniture, props, wall and floor colors, lighting and time of day. Only the characters' poses, the framing and the camera angle change. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         else if (changedScene) promptText += `NEW LOCATION: this panel happens somewhere different from REFERENCE 3. Use REFERENCE 3 only for the art style and the look of the characters; do NOT reuse its background or props. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         promptText += 'INSTRUCTIONS: Maintain strict character likeness. If scene mentions \'HERO\', you MUST use REFERENCE 1. If scene mentions \'CO-STAR\' or \'SIDEKICK\', you MUST use REFERENCE 2.';
         if (beat.caption) promptText += ` INCLUDE CAPTION BOX: "${beat.caption}"`;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ComicFace } from './types.ts';
-import { isUnlocked, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun } from './storyLogic.ts';
+import { isUnlocked, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun, sceneStartImage } from './storyLogic.ts';
 
 const done = (pageIndex: number, extra: Partial<ComicFace> = {}): ComicFace => ({
     id: pageIndex === 0 ? 'cover' : `page-${pageIndex}`,
@@ -57,12 +57,22 @@ const storyFace = (pageIndex: number, new_scene?: boolean): ComicFace => ({
     narrative: { scene: 's', choices: [], focus_char: 'hero', ...(new_scene === undefined ? {} : { new_scene }) }
 });
 
-test('a location lasts at most two pages and an issue starts in a new one', () => {
+test('a location lasts at most three pages and an issue starts in a new one', () => {
     assert.equal(mustChangeScene([], 1), true);
     assert.equal(mustChangeScene([storyFace(1, true)], 2), false);
     assert.equal(sceneRun([storyFace(1, true), storyFace(2, false)], 3), 2);
-    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false)], 3), true);
-    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false), storyFace(3, true)], 4), false);
+    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false)], 3), false);
+    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false), storyFace(3, false)], 4), true);
+    assert.equal(mustChangeScene([storyFace(1, true), storyFace(2, false), storyFace(3, false), storyFace(4, true)], 5), false);
+});
+
+test('the first image of a location is passed along only once the scene has lasted two pages', () => {
+    const withImage = (face: ComicFace, imageUrl: string): ComicFace => ({ ...face, imageUrl });
+    const one = withImage(storyFace(1, true), 'one');
+    const two = withImage(storyFace(2, false), 'two');
+    assert.equal(sceneStartImage([one], 2), null);
+    assert.equal(sceneStartImage([one, two], 3), 'one');
+    assert.equal(sceneStartImage([withImage(storyFace(1, true), 'a'), withImage(storyFace(2, true), 'b'), withImage(storyFace(3, false), 'c')], 4), 'b');
 });
 
 test('pages made before scenes were tracked each count as their own scene', () => {

@@ -88,6 +88,17 @@ export function sceneRun(faces: ComicFace[], pageNum: number): number {
     return run;
 }
 
+// The image of the page that opened the current location, when it is not the previous page itself.
+export function sceneStartImage(faces: ComicFace[], pageNum: number): string | null {
+    const run = sceneRun(faces, pageNum);
+    if (run < 2) return null;
+    const pages = faces
+        .filter(face => face.type === 'story' && face.narrative && (face.pageIndex ?? 0) < pageNum)
+        .sort((a, b) => (a.pageIndex ?? 0) - (b.pageIndex ?? 0));
+    const start = pages[pages.length - run];
+    return start && isComplete(start) ? start.imageUrl! : null;
+}
+
 // The first page of an issue and any page after a full-length scene must change location.
 export function mustChangeScene(faces: ComicFace[], pageNum: number): boolean {
     const run = sceneRun(faces, pageNum);
