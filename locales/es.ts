@@ -199,7 +199,7 @@ export const es = {
     "panel.share": "Compartir",
     "panel.choicePrompt": "¿Qué te guía?",
     "panel.printing": "IMPRIMIENDO... {done}/{total}",
-    "panel.readIssue": "LEER NÚMERO #1",
+    "panel.readIssue": "LEER NÚMERO #{issue}",
     "panel.download": "DESCARGAR NÚMERO",
     "panel.backToMenu": "VOLVER AL MENÚ",
     "fx.sounds": "¡PUM!|¡ZAS!|¡BAM!|¡CRAC!|¡CATAPLÚM!|¡FUUUSH!|¡ZAP!|¡BOOM!",

@@ -200,7 +200,7 @@ export const fr: Record<MessageKey, string> = {
     'panel.share': 'Partager',
     'panel.choicePrompt': 'Qu’est-ce qui te guide ?',
     'panel.printing': 'IMPRESSION... {done}/{total}',
-    'panel.readIssue': 'LIRE LE NUMÉRO 1',
+    'panel.readIssue': 'LIRE LE NUMÉRO {issue}',
     'panel.download': 'TÉLÉCHARGER LE NUMÉRO',
     'panel.backToMenu': 'RETOUR AU MENU',
     'fx.sounds': 'POW !|VLAN !|BAM !|CRAC !|BADABOUM !|FIOUUU !|ZAP !|BOUM !',

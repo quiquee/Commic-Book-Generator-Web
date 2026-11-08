@@ -200,7 +200,7 @@ export const gl: Record<MessageKey, string> = {
     'panel.share': 'Compartir',
     'panel.choicePrompt': 'Que te guía?',
     'panel.printing': 'IMPRIMINDO... {done}/{total}',
-    'panel.readIssue': 'LER NÚMERO 1',
+    'panel.readIssue': 'LER NÚMERO {issue}',
     'panel.download': 'DESCARGAR NÚMERO',
     'panel.backToMenu': 'VOLVER AO MENÚ',
     'fx.sounds': 'PUM!|ZAS!|BAM!|CRAC!|CATAPLUM!|FUUUSH!|ZAP!|BOOM!',

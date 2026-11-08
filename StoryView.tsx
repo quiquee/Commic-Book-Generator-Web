@@ -251,6 +251,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
                 onShare={shareLink}
+                issue={story.continuation?.issue}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
             {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}

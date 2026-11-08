@@ -200,7 +200,7 @@ export const de: Record<MessageKey, string> = {
     'panel.share': 'Teilen',
     'panel.choicePrompt': 'Was leitet dich?',
     'panel.printing': 'WIRD GEDRUCKT... {done}/{total}',
-    'panel.readIssue': 'AUSGABE #1 LESEN',
+    'panel.readIssue': 'AUSGABE #{issue} LESEN',
     'panel.download': 'AUSGABE HERUNTERLADEN',
     'panel.backToMenu': 'ZURÜCK ZUM MENÜ',
     'fx.sounds': 'PENG!|ZACK!|BÄM!|KRACH!|KAWUMM!|WUSCH!|ZAP!|BUMM!',

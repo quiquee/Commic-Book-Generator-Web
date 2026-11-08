@@ -16,9 +16,11 @@ interface PanelProps {
     onDownload: () => void;
     onReset: () => void;
     onShare?: () => void;
+    // Number of the issue (2 or more for a continuation); 1 when absent.
+    issue?: number;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, issue = 1 }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
     if (face.isLoading && !face.imageUrl) return <LoadingFX />;
     
@@ -57,7 +59,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
                      <button onClick={(e) => { e.stopPropagation(); onOpenBook(); }}
                       disabled={!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl}
                       className="comic-btn bg-yellow-400 px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:bg-gray-400 disabled:cursor-wait">
-                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? t('panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : t('panel.readIssue')}
+                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? t('panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : t('panel.readIssue', { issue })}
                      </button>
                  </div>
             )}

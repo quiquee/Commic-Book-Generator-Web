@@ -200,7 +200,7 @@ export const en: Record<MessageKey, string> = {
     'panel.share': 'Share',
     'panel.choicePrompt': 'What guides you?',
     'panel.printing': 'PRINTING... {done}/{total}',
-    'panel.readIssue': 'READ ISSUE #1',
+    'panel.readIssue': 'READ ISSUE #{issue}',
     'panel.download': 'DOWNLOAD ISSUE',
     'panel.backToMenu': 'BACK TO MENU',
     'fx.sounds': 'POW!|ZAP!|BAM!|CRACK!|KABOOM!|WHOOSH!|ZING!|BOOM!',
