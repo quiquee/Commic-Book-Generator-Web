@@ -7,9 +7,10 @@ import React, { useState, useEffect } from 'react';
 import { t } from './i18n';
 
 // Onomatopoeias change with the language; the catalog keeps them in one '|'-separated string.
-const LOADING_FX = t('fx.sounds').split('|');
+const GENERIC_FX = t('fx.sounds').split('|');
 
-export const LoadingFX: React.FC = () => {
+export const LoadingFX: React.FC<{ sounds?: string[] }> = ({ sounds }) => {
+    const LOADING_FX = sounds && sounds.length >= 4 ? sounds : GENERIC_FX;
     const [particles, setParticles] = useState<{id: number, text: string, x: string, y: string, rot: number, color: string}[]>([]);
     useEffect(() => {
         const interval = setInterval(() => {
@@ -23,7 +24,7 @@ export const LoadingFX: React.FC = () => {
             setParticles(prev => [...prev, { id, text, x, y, rot, color }].slice(-4));
         }, 600);
         return () => clearInterval(interval);
-    }, []);
+    }, [LOADING_FX]);
 
     return (
         <div className="w-full h-full bg-white overflow-hidden relative border-r-4 border-gray-300">

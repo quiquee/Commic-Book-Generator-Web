@@ -46,6 +46,13 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
     return params ? template.replace(/\{(\w+)\}/g, (match, name) => name in params ? String(params[name]) : match) : template;
 }
 
+// Same as t(), but in the language of a comic ('es-ES', 'fr-FR'...); the interface language when it is unknown.
+export function tFor(languageTag: string | undefined, key: MessageKey, params?: Record<string, string | number>): string {
+    const target = baseOf(languageTag) ?? locale;
+    const template = catalogs[target][key] ?? es[key] ?? key;
+    return params ? template.replace(/\{(\w+)\}/g, (match, name) => name in params ? String(params[name]) : match) : template;
+}
+
 // Server and shared code report errors in Spanish; this shows them in the reader's language.
 export function localizeText(text: string): string {
     return translateServerText(text, locale);

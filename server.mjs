@@ -917,6 +917,7 @@ export function createAppServer({
           settings: story.settings,
           tone: story.tone,
           styleGuide: story.styleGuide,
+          soundEffects: story.soundEffects ?? [],
           version: story.version,
           createdAt: story.createdAt,
           updatedAt: story.updatedAt,

@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { TONES, Persona } from './types';
-import { defaultComicLanguage, localizeText, t } from './i18n';
+import { defaultComicLanguage, t } from './i18n';
 import { Setup } from './Setup';
 import { Book } from './Book';
 import { useApiKey } from './useApiKey';
@@ -19,11 +19,8 @@ import { StoryView } from './StoryView';
 import { ContinueStory } from './ContinueStory';
 import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
 import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument } from './stories';
-import { apiErrorMessage, createAI, fatalGenerationMessage, generateTitleCandidates, isApiKeyError } from './generation';
-import { cleanTitle, isTitleTaken, loadTitleHistory, pickUniqueTitle, rememberTitle } from './titles';
+import { cleanTitle, isTitleTaken, loadTitleHistory, rememberTitle } from './titles';
 
-// Pre-filled title; titles are unique, so once it has been used Gemini proposes one instead.
-const DEFAULT_TITLE = t('title.default');
 
 function pickTone(genre: string): string {
   let availableTones = TONES;
@@ -47,10 +44,7 @@ const App: React.FC = () => {
   const [richMode, setRichMode] = useState(true);
   const [castMode, setCastMode] = useState<CastMode>('solo');
   const [activeInvitation, setActiveInvitation] = useState<ActiveInvitation | null>(null);
-  const [title, setTitle] = useState(DEFAULT_TITLE);
-  const [titleSource, setTitleSource] = useState<'default' | 'gemini' | 'manual' | null>('default');
-  const [titleStale, setTitleStale] = useState(false);
-  const [titleBusy, setTitleBusy] = useState(false);
+  const [title, setTitle] = useState('');
   const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
   // Groups the calls made before the comic exists (title proposals) so their usage is attributed to it later.
   const [draftId, setDraftId] = useState(newDraftId);
@@ -99,10 +93,7 @@ const App: React.FC = () => {
     setCastMode('solo');
     setActiveInvitation(null);
     setRedoSource(null);
-    setTitle(DEFAULT_TITLE);
-    setTitleSource('default');
-    setTitleStale(false);
-    setTitleBusy(false);
+    setTitle('');
     setIsTransitioning(false);
     setShowApiKeyDialog(false);
     setSetupRevision(revision => revision + 1);
@@ -145,30 +136,7 @@ const App: React.FC = () => {
     document.getElementById('setup-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // A Gemini title was written for a specific genre/premise/language; changing them makes it stale.
-  const changeStorySetting = <T,>(setter: (value: T) => void) => (value: T) => {
-    setter(value);
-    if (titleSource === 'gemini') setTitleStale(true);
-  };
-
   const forbiddenTitles = useCallback(() => [...new Set([...loadTitleHistory(), ...libraryTitles])], [libraryTitles]);
-  const defaultTitleTaken = titleSource === 'default' && isTitleTaken(title, forbiddenTitles());
-
-  // Up to three rounds of candidates; a numbered variant is accepted only as a last resort.
-  const generateUniqueTitle = async (genre: string, premise: string, language: string, hostName: string, guestName: string): Promise<string> => {
-    const ai = createAI({ kind: 'draft', draftId });
-    const forbidden = forbiddenTitles();
-    const request = { settings: { genre, language, premise, richMode }, tone: pickTone(genre), hostName, guestName, forbidden };
-    let lastCandidates: unknown[] = [];
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      lastCandidates = await generateTitleCandidates(ai, request);
-      const fresh = lastCandidates.map(cleanTitle).find(candidate => candidate && !isTitleTaken(candidate, forbidden));
-      if (fresh) return fresh;
-    }
-    const numbered = pickUniqueTitle(lastCandidates, forbidden);
-    if (!numbered) throw new Error(t('error.noNewTitle'));
-    return numbered;
-  };
 
   // The invitation only counts while "Invitar" is selected; switching modes keeps it for coming back.
   const invitation = castMode === 'invite' ? activeInvitation : null;
@@ -184,37 +152,13 @@ const App: React.FC = () => {
   const launchBlocker = castMode === 'invite'
     ? !invitation ? t('launch.createInvitationFirst')
       : !invitation.response ? t('launch.waitingFor', { name: invitation.invitation.guestName.toUpperCase() }) : null
-    : castMode === 'photo' && !friend ? t('launch.uploadCostar') : null;
-
-  const proposeTitle = async () => {
-    if (titleBusy) return;
-    if (selectedGenre === 'Custom' && !customPremise.trim()) {
-      setAppError(t('error.premiseBeforeTitle'));
-      return;
-    }
-    if (!(await validateApiKey())) return;
-    setTitleBusy(true);
-    setAppError('');
-    try {
-      const { hostName, guestName } = currentNames();
-      const proposed = await generateUniqueTitle(selectedGenre, customPremise, selectedLanguage, hostName, guestName);
-      setTitle(proposed);
-      setTitleSource('gemini');
-      setTitleStale(false);
-    } catch (error) {
-      if (isApiKeyError(error)) setShowApiKeyDialog(true);
-      else setAppError(t('error.proposeTitle', { reason: localizeText(fatalGenerationMessage(error) ?? apiErrorMessage(error)) }));
-    } finally {
-      setTitleBusy(false);
-    }
-  };
+    : castMode === 'photo' && !friend ? t('launch.uploadCostar')
+    : !cleanTitle(title) ? t('launch.enterTitle') : null;
 
   // A shared comic uses the settings the guest was shown, so they are loaded (and locked) with the invitation.
   const changeActiveInvitation = (next: ActiveInvitation | null) => {
     if (next && next.invitation.id !== activeInvitation?.invitation.id) {
       const { settings } = next.invitation;
-      if (titleSource === 'gemini' && (settings.genre !== selectedGenre || settings.premise !== customPremise
-        || settings.language !== selectedLanguage)) setTitleStale(true);
       setSelectedGenre(settings.genre);
       setSelectedLanguage(settings.language);
       setCustomPremise(settings.premise);
@@ -234,26 +178,15 @@ const App: React.FC = () => {
     setAppError('');
     const { hostName, guestName } = currentNames();
 
-    // The title is fixed before the comic exists: generate one unless the protagonist wrote her own.
-    let finalTitle = cleanTitle(title);
-    const needsGeneration = !finalTitle || (titleStale && titleSource === 'gemini') || defaultTitleTaken;
-    try {
-      if (needsGeneration) {
-        setTitleBusy(true);
-        finalTitle = await generateUniqueTitle(selectedGenre, customPremise, selectedLanguage, hostName, guestName);
-        setTitle(finalTitle);
-        setTitleSource('gemini');
-        setTitleStale(false);
-      } else if (titleSource === 'manual' && isTitleTaken(finalTitle, forbiddenTitles())) {
-        setAppError(t('error.titleTaken'));
-        return;
-      }
-    } catch (error) {
-      if (isApiKeyError(error)) setShowApiKeyDialog(true);
-      else setAppError(t('error.generateTitle', { reason: localizeText(fatalGenerationMessage(error) ?? apiErrorMessage(error)) }));
+    // The title is fixed before the comic exists and is always written by the protagonist.
+    const finalTitle = cleanTitle(title);
+    if (!finalTitle) {
+      setAppError(t('error.titleRequired'));
       return;
-    } finally {
-      setTitleBusy(false);
+    }
+    if (isTitleTaken(finalTitle, forbiddenTitles())) {
+      setAppError(t('error.titleTaken'));
+      return;
     }
 
     setIsTransitioning(true);
@@ -355,23 +288,15 @@ const App: React.FC = () => {
           richMode={richMode}
           onHeroUpload={handleHeroUpload}
           onFriendUpload={handleFriendUpload}
-          onGenreChange={changeStorySetting(setSelectedGenre)}
-          onLanguageChange={changeStorySetting(setSelectedLanguage)}
-          onPremiseChange={changeStorySetting(setCustomPremise)}
+          onGenreChange={setSelectedGenre}
+          onLanguageChange={setSelectedLanguage}
+          onPremiseChange={setCustomPremise}
           onRichModeChange={setRichMode}
           onLaunch={launchStory}
-          launchDisabled={titleBusy || !!launchBlocker}
-          launchLabel={titleBusy ? t('launch.searchingTitle') : launchBlocker ?? (coStar && invitation
+          launchDisabled={!!launchBlocker}
+          launchLabel={launchBlocker ?? (coStar && invitation
             ? t('launch.startWith', { name: invitation.invitation.guestName.toUpperCase() }) : undefined)}
-          titleField={{
-            value: title,
-            busy: titleBusy,
-            stale: titleStale && titleSource === 'gemini',
-            note: defaultTitleTaken ? t('title.defaultTaken', { title: DEFAULT_TITLE })
-              : titleSource === 'default' ? t('title.defaultHint') : undefined,
-            onChange: value => { setTitle(value); setTitleSource(value.trim() ? 'manual' : null); setTitleStale(false); },
-            onPropose: proposeTitle
-          }}
+          titleField={{ value: title, onChange: setTitle }}
           belowLaunch={!isTransitioning && <>
             <StoryLibrary key={`library-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} onRedo={redoStory} onContinue={(story, ownerToken) => setContinueSource({ story, ownerToken })} onTitlesLoaded={setLibraryTitles} />
             <AdminLibrary key={`admin-${setupRevision}`} onOpen={storyId => navigate({ story: storyId })} />
@@ -383,11 +308,11 @@ const App: React.FC = () => {
 
   return (
     <div className="comic-scene">
-      <button type="button" onClick={returnToMainMenu} className="fixed top-2 left-2 z-[500] comic-btn bg-yellow-400 text-black px-3 py-2 text-lg">{t('nav.mainMenu')}</button>
+      <button type="button" onClick={returnToMainMenu} className="fixed bottom-2 left-2 z-[500] comic-btn bg-yellow-400/90 text-black px-2 py-1 text-base">{t('nav.mainMenu')}</button>
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
           {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>
       </div>}
-      {continueSource && <ContinueStory source={continueSource.story} ownerToken={continueSource.ownerToken} existingTitles={libraryTitles} onCancel={() => setContinueSource(null)} />}
+      {continueSource && <ContinueStory source={continueSource.story} ownerToken={continueSource.ownerToken} existingTitles={libraryTitles} onCancel={() => setContinueSource(null)} onCreated={() => setContinueSource(null)} />}
       {showApiKeyDialog && <ApiKeyDialog onContinue={handleApiKeyDialogContinue} />}
       {content}
     </div>

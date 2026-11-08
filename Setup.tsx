@@ -33,7 +33,6 @@ const GENRE_ICONS: Record<string, string> = {
     'Teen Drama / Slice of Life': '🎒'
 };
 
-const PREMISE_IDEAS: MessageKey[] = ['idea.ant', 'idea.mars', 'idea.museum', 'idea.cat'];
 
 interface StoryPickerProps {
     selectedGenre: string;
@@ -54,13 +53,13 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
     return (
         <div className="mb-2">
             <div role="radiogroup" aria-label={t('story.kind')} className="grid grid-cols-2 gap-2 mb-2">
-                <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
-                    <span className="font-comic text-lg block">📚 {t('story.genre')}</span>
-                    <span className="text-xs block">{t('story.genreHint')}</span>
-                </button>
                 <button type="button" role="radio" aria-checked={isCustom} onClick={() => onGenreChange('Custom')} className={kindClass(isCustom)}>
                     <span className="font-comic text-lg block">✍️ {t('story.custom')}</span>
                     <span className="text-xs block">{t('story.customHint')}</span>
+                </button>
+                <button type="button" role="radio" aria-checked={!isCustom} onClick={() => onGenreChange(lastGenre.current)} className={kindClass(!isCustom)}>
+                    <span className="font-comic text-lg block">📚 {t('story.genre')}</span>
+                    <span className="text-xs block">{t('story.genreHint')}</span>
                 </button>
             </div>
             {isCustom ? (
@@ -69,16 +68,6 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
                     <textarea aria-label={t('story.premiseLabel')} value={customPremise} onChange={(e) => onPremiseChange(e.target.value)} maxLength={2000}
                         placeholder={t('story.premisePlaceholder')}
                         className="w-full p-2 border-2 border-black font-comic text-lg h-28 resize-none bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
-                    {!readOnly && (
-                        <div className="mt-1">
-                            <p className="text-xs text-gray-700">{t('story.ideasHint')}</p>
-                            <div className="flex flex-col gap-1 mt-1">
-                                {PREMISE_IDEAS.map(idea => (
-                                    <button key={idea} type="button" onClick={() => onPremiseChange(t(idea))} className="text-left text-xs border border-black bg-white px-2 py-1 hover:bg-yellow-100">{t(idea)}</button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             ) : (
                 <div role="radiogroup" aria-label={t('story.genreLabel')} className="grid grid-cols-2 gap-1">
@@ -127,12 +116,7 @@ interface SetupProps {
     belowLaunch?: React.ReactNode;
     titleField?: {
         value: string;
-        busy: boolean;
-        stale: boolean;
-        // Overrides the hint under the field (e.g. for the default title).
-        note?: string;
         onChange: (value: string) => void;
-        onPropose: () => void;
     };
 }
 
@@ -286,15 +270,8 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                 {props.titleField && !props.guestMode && (
                                     <div className="mb-2">
                                         <p className="font-comic text-base mb-1 font-bold text-gray-800">{t('title.heading')}</p>
-                                        <div className="flex gap-2">
-                                            <input aria-label={t('title.label')} maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder={t('title.placeholder')} className="flex-1 min-w-0 p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
-                                            <button type="button" onClick={props.titleField.onPropose} disabled={props.titleField.busy || props.isTransitioning} className="comic-btn bg-purple-600 text-white text-sm px-3 py-1 whitespace-nowrap disabled:bg-gray-400">
-                                                {props.titleField.busy ? t('title.searching') : props.titleField.value ? t('title.another') : t('title.propose')}
-                                            </button>
-                                        </div>
-                                        <p className="text-xs text-gray-700 mt-1">
-                                            {props.titleField.note ?? (props.titleField.stale ? t('title.stale') : t('title.hint'))}
-                                        </p>
+                                        <input aria-label={t('title.label')} required maxLength={60} value={props.titleField.value} onChange={(e) => props.titleField!.onChange(e.target.value)} placeholder={t('title.placeholder')} className="w-full p-1 border-2 border-black font-comic text-lg bg-white shadow-[3px_3px_0px_rgba(0,0,0,0.2)]" />
+                                        <p className="text-xs text-gray-700 mt-1">{t('title.hint')}</p>
                                     </div>
                                 )}
                             </div>

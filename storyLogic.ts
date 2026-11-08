@@ -104,3 +104,21 @@ export function mustChangeScene(faces: ComicFace[], pageNum: number): boolean {
     const run = sceneRun(faces, pageNum);
     return run === 0 || run >= MAX_SCENE_PAGES;
 }
+
+// Sound effects shown while a page is drawn: the stock ones Gemini keeps repeating are dropped.
+const STOCK_SOUNDS = new Set(['GLUP', 'GLUPS', 'CHOF', 'CATAPLUM', 'CATAPLÚM', 'POW', 'BAM', 'BOOM', 'ZAS', 'PUM']);
+
+export function cleanSoundEffects(raw: unknown): string[] {
+    const items = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split('|') : [];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const item of items) {
+        if (typeof item !== 'string') continue;
+        const word = item.replace(/\s+/g, ' ').trim().slice(0, 24);
+        const key = word.replace(/[¡!¿?\s]/g, '').toUpperCase();
+        if (!key || STOCK_SOUNDS.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        result.push(word);
+    }
+    return result.slice(0, 12);
+}

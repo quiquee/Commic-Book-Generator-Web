@@ -12,6 +12,8 @@ interface ContinueStoryProps {
     // Titles already in the library, so the new issue gets a unique one.
     existingTitles: string[];
     onCancel: () => void;
+    // Called once the next issue exists, right before opening it, so the owner can close this dialog.
+    onCreated: () => void;
 }
 
 const CUSTOM = -1;
@@ -23,7 +25,7 @@ function nextIssueTitle(title: string, issue: number): string {
     return numbered.length <= 60 ? numbered : `${base.slice(0, 60 - ` #${issue}`.length).trim()} #${issue}`;
 }
 
-export function ContinueStory({ source, ownerToken, existingTitles, onCancel }: ContinueStoryProps) {
+export function ContinueStory({ source, ownerToken, existingTitles, onCancel, onCreated }: ContinueStoryProps) {
     const issue = (source.continuation?.issue ?? 1) + 1;
     const [recap, setRecap] = useState('');
     const [options, setOptions] = useState<string[]>([]);
@@ -70,14 +72,15 @@ export function ContinueStory({ source, ownerToken, existingTitles, onCancel }: 
         setCreating(true);
         setError('');
         try {
-            rememberTitle(finalTitle);
             const created = await createStory({
                 title: finalTitle, hostName: source.hostName, guestName: source.guestName,
                 hero: source.hero, friend: source.friend, settings: source.settings, tone: source.tone,
                 invitation: null,
                 continuation: { fromId: source.id, token: ownerToken, recap, direction }
             });
+            rememberTitle(finalTitle);
             saveStoryKeys([...loadStoryKeys(), created]);
+            onCreated();
             navigate({ story: created.id });
         } catch (failure) {
             setCreating(false);

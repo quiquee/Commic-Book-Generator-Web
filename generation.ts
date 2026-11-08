@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { LANGUAGES, MAX_STORY_PAGES, type Beat, type ComicFace, type Persona } from './types.ts';
 import type { StorySettings } from './invitations.ts';
-import { mustChangeScene } from './storyLogic.ts';
+import { cleanSoundEffects, mustChangeScene } from './storyLogic.ts';
 
 export const MODEL_TEXT_NAME = 'gemini-3.8-flash';
 export const MODEL_IMAGE_GEN_NAME = 'gemini-nano-banana-2.1';
@@ -301,6 +301,22 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     };
 }
 
+// Sound effects for the "drawing the page" screen, tied to this story instead of the generic ones.
+export async function generateSoundEffects(ai: GoogleGenAI, context: StoryContext): Promise<string[]> {
+    const langName = languageName(context.settings.language);
+    const premise = context.settings.genre === 'Custom' ? context.settings.premise : `${context.settings.genre}. ${context.settings.premise || ''}`;
+    const response = await ai.models.generateContent({
+        model: MODEL_TEXT_NAME,
+        contents: `You write the sound effects shown on a comic book loading screen while a page is being drawn.
+Language: ${langName}. Comic title: "${context.title}". Story: ${premise}.
+Return 12 short onomatopoeias or action words, UPPERCASE with exclamation marks (¡...! in Spanish), tied to what happens in THIS story: sounds made by its characters, creatures, places and objects, plus a couple of fun reaction words.
+Rules: 1-2 words each; real sound-effect style (never commands or full verbs in the imperative); avoid the stock ones (POW, BAM, BOOM, ZAS, CRAC, PUM, CATAPLUM, GLUP, CHOF) unless the story really needs them; no duplicates; no character names.
+OUTPUT STRICT JSON ONLY: {"sounds": ["...", "..."]}`,
+        config: { responseMimeType: 'application/json', temperature: 1.1, ...usage('sounds') }
+    });
+    return cleanSoundEffects(parseJson(response.text).sounds);
+}
+
 export interface Recap {
     recap: string;
     options: string[];
@@ -387,6 +403,7 @@ export async function generateImage(
         if (keepLocation) promptText += `SAME LOCATION AS REFERENCE 3${sceneImage ? ' AND REFERENCE 4' : ''}: keep exactly the same architecture, shape and position of windows and doors, furniture, props, wall and floor colors, lighting and time of day. Only the characters' poses, the framing and the camera angle change. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         else if (changedScene) promptText += `NEW LOCATION: this panel happens somewhere different from REFERENCE 3. Use REFERENCE 3 only for the art style and the look of the characters; do NOT reuse its background or props. LOCATION DETAILS: ${beat.setting ?? ''}. `;
         promptText += 'INSTRUCTIONS: Maintain strict character likeness. If scene mentions \'HERO\', you MUST use REFERENCE 1. If scene mentions \'CO-STAR\' or \'SIDEKICK\', you MUST use REFERENCE 2.';
+        promptText += ' LETTERING: all text must be LARGE and easy to read, about twice the usual comic size: big bold hand-lettered capital letters, thick speech bubbles and caption boxes that take generous space, high contrast with the background.';
         if (beat.caption) promptText += ` INCLUDE CAPTION BOX: "${beat.caption}"`;
         if (beat.dialogue) promptText += ` INCLUDE SPEECH BUBBLE: "${beat.dialogue}"`;
     }

@@ -6,7 +6,7 @@
 import React from 'react';
 import { ComicFace, INITIAL_PAGES, GATE_PAGE } from './types';
 import { LoadingFX } from './LoadingFX';
-import { t } from './i18n';
+import { t, tFor } from './i18n';
 
 interface PanelProps {
     face?: ComicFace;
@@ -16,11 +16,19 @@ interface PanelProps {
     onDownload: () => void;
     onReset: () => void;
     onShare?: () => void;
+    // Only for the owner of a finished comic.
+    onContinue?: () => void;
+    // Number of the issue (2 or more for a continuation); 1 when absent.
+    issue?: number;
+    // Story-themed sound effects for the loading screen.
+    soundEffects?: string[];
+    // Language of the comic ('es-ES'): the cover button is written in it.
+    comicLanguage?: string;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, onContinue, issue = 1, soundEffects, comicLanguage }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
-    if (face.isLoading && !face.imageUrl) return <LoadingFX />;
+    if (face.isLoading && !face.imageUrl) return <LoadingFX sounds={soundEffects} />;
     
     const isFullBleed = face.type === 'cover' || face.type === 'back_cover';
 
@@ -33,7 +41,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             {face.imageUrl && onShare && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); onShare(); }}
                   aria-label={t('panel.shareLink')}
-                  className="absolute top-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
+                  className="absolute bottom-3 right-3 z-30 comic-btn bg-white/90 text-black text-sm px-3 py-1 hover:bg-yellow-300">
                     {t('panel.share')}
                 </button>
             )}
@@ -57,7 +65,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
                      <button onClick={(e) => { e.stopPropagation(); onOpenBook(); }}
                       disabled={!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl}
                       className="comic-btn bg-yellow-400 px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:bg-gray-400 disabled:cursor-wait">
-                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? t('panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : t('panel.readIssue')}
+                         {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? tFor(comicLanguage, 'panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : tFor(comicLanguage, 'panel.readIssue', { issue })}
                      </button>
                  </div>
             )}
@@ -66,6 +74,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             {face.type === 'back_cover' && (
                 <div className="absolute bottom-24 inset-x-0 flex flex-col items-center gap-4 z-20">
                     <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="comic-btn bg-blue-500 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('panel.download')}</button>
+                    {onContinue && <button onClick={(e) => { e.stopPropagation(); onContinue(); }} className="comic-btn bg-red-600 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('continue.button')}</button>}
                     <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="comic-btn bg-green-500 text-white px-8 py-4 text-2xl font-bold hover:scale-105">{t('panel.backToMenu')}</button>
                 </div>
             )}

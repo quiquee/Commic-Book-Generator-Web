@@ -32,6 +32,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [continuing, setContinuing] = useState(false);
+    const [statusHidden, setStatusHidden] = useState(false);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
@@ -78,7 +79,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 versionRef.current = Math.max(versionRef.current, delta.version);
                 updateStory(current => ({
                     ...current,
-                    title: delta.title, tone: delta.tone, styleGuide: delta.styleGuide || current.styleGuide,
+                    title: delta.title, tone: delta.tone, styleGuide: delta.styleGuide || current.styleGuide, soundEffects: delta.soundEffects ?? current.soundEffects,
                     completedPages: delta.completedPages, updatedAt: delta.updatedAt, generation: delta.generation,
                     // The server draws every page, so all readers take its version of them.
                     faces: mergeFaces(current.faces, delta.faces, 'guest')
@@ -170,7 +171,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
         pages.forEach((face, index) => {
             if (index > 0) doc.addPage([480, 720], 'portrait');
             doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
-            addSiteLink(doc, face.type, 480, 720);
+            addSiteLink(doc, face.type, 480, 720, story.settings.language);
         });
         doc.save(`${titleSlug(story.title)}.pdf`);
     };
@@ -224,13 +225,14 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
 
     return (
         <>
-            <div className="fixed top-2 right-2 z-[500] flex flex-wrap justify-end gap-2 max-w-[70vw]">
-                <button type="button" onClick={downloadPDF} disabled={!hasPages} className="comic-btn bg-blue-500 text-white px-3 py-2 text-lg disabled:bg-gray-400">{t('view.downloadPdf')}</button>
-                {isOwner && story && isStoryFinished(story.faces) && <button type="button" onClick={() => setContinuing(true)} className="comic-btn bg-red-600 text-white px-3 py-2 text-lg">{t('continue.button')}</button>}
-            </div>
-            <div className="fixed top-16 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
-                {story && <p role="status" className="font-comic text-lg text-white bg-black/70 px-3 py-1 border-2 border-yellow-400">{story.title} · {statusText}</p>}
-                {inProgress && !pendingDecision(story!.faces) && <p className="text-xs text-white bg-black/60 px-2 py-0.5">{t('view.canClose')}</p>}
+            <div className="fixed bottom-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
+                {story && !statusHidden && (
+                    <p role="status" className="pointer-events-auto flex items-center gap-3 font-comic text-lg text-white bg-black/70 pl-3 pr-1 py-1 border-2 border-yellow-400">
+                        <span>{story.title} · {statusText}</span>
+                        <button type="button" onClick={() => setStatusHidden(true)} aria-label={t('common.close')}
+                          className="shrink-0 w-7 h-7 rounded-full bg-red-600 text-white border-2 border-black text-base leading-none flex items-center justify-center hover:scale-110">✕</button>
+                    </p>
+                )}
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
                 {isOwner && story?.generation?.state === 'stopped' && (
                     <div className="pointer-events-auto flex flex-wrap justify-center gap-2 mt-2">
@@ -251,6 +253,10 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
                 onShare={shareLink}
+                onContinue={isOwner && story && isStoryFinished(story.faces) ? () => setContinuing(true) : undefined}
+                issue={story.continuation?.issue}
+                soundEffects={story.soundEffects}
+                comicLanguage={story.settings.language}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
             {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
@@ -268,7 +274,7 @@ export function StoryView({ storyId, auth, onExit }: StoryViewProps) {
                     </form>
                 </div>
             )}
-            {continuing && story && auth.kind === 'owner' && <ContinueStory source={story} ownerToken={auth.token} existingTitles={[]} onCancel={() => setContinuing(false)} />}
+            {continuing && story && auth.kind === 'owner' && <ContinueStory source={story} ownerToken={auth.token} existingTitles={[]} onCancel={() => setContinuing(false)} onCreated={() => setContinuing(false)} />}
             {showCredits && <Credits onDone={onExit} />}
         </>
     );

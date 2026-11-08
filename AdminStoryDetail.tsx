@@ -93,7 +93,7 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                 });
                 if (!first) doc.addPage([480, 720], 'portrait');
                 doc.addImage(data, 'JPEG', 0, 0, 480, 720);
-                addSiteLink(doc, face.type, 480, 720);
+                addSiteLink(doc, face.type, 480, 720, story.settings?.language);
                 first = false;
             }
             if (first) throw new Error(t('admin.noPagesForPdf'));

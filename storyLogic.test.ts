@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ComicFace } from './types.ts';
-import { isUnlocked, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun, sceneStartImage } from './storyLogic.ts';
+import { isUnlocked, cleanSoundEffects, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun, sceneStartImage } from './storyLogic.ts';
 
 const done = (pageIndex: number, extra: Partial<ComicFace> = {}): ComicFace => ({
     id: pageIndex === 0 ? 'cover' : `page-${pageIndex}`,
@@ -78,4 +78,11 @@ test('the first image of a location is passed along only once the scene has last
 test('pages made before scenes were tracked each count as their own scene', () => {
     assert.equal(sceneRun([storyFace(1), storyFace(2)], 3), 1);
     assert.equal(mustChangeScene([storyFace(1), storyFace(2)], 3), false);
+});
+
+test('cleanSoundEffects drops stock and repeated words and caps the list', () => {
+  const result = cleanSoundEffects(['¡GLUP!', '¡BROT!', '¡brot!', ' ¡FSSS! ', '', 5, '¡CATAPLÚM!']);
+  assert.deepEqual(result, ['¡BROT!', '¡FSSS!']);
+  assert.equal(cleanSoundEffects(Array.from({ length: 30 }, (_, i) => `¡X${i}!`)).length, 12);
+  assert.deepEqual(cleanSoundEffects('¡A!|¡B!'), ['¡A!', '¡B!']);
 });
