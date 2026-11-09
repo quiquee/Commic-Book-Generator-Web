@@ -677,3 +677,39 @@ test('the next issue copies the cast and look of a finished comic and refuses un
   assert.deepEqual(next.payload.continuation, { fromId: source.payload.id, issue: 2, recap: 'Resumen.', direction: 'Perdonar' });
   assert.equal(next.payload.faces.length, 0);
 });
+
+test('a reader gets their own copy of a finished comic, with photos and characters, and cannot touch the original', async () => {
+  const source = await api('/api/stories', { method: 'POST', body: { ...storyBody(), friend: { base64: JPEG, desc: 'Amiga' } } });
+  const owner = source.payload.ownerToken;
+  const path = `/api/stories/${source.payload.id}`;
+  const shared = await api(`${path}/share`, { method: 'POST', token: owner, body: {} });
+  const read = shared.payload.token;
+
+  const early = await api(`${path}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(early.response.status, 409);
+
+  const image = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(16), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  for (let page = 0; page <= 11; page++) {
+    const id = page === 0 ? 'cover' : `page-${page}`;
+    await api(`${path}/faces/${id}`, { method: 'PUT', token: owner, body: faceBody(id, { imageUrl: image }) });
+  }
+
+  assert.equal((await api(`${path}/copy`, { method: 'POST', body: {} })).response.status, 401);
+  assert.equal((await api(`${path}/copy`, { method: 'POST', token: owner, body: {} })).response.status, 403);
+
+  const copied = await api(`${path}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(copied.response.status, 201);
+  assert.notEqual(copied.payload.id, source.payload.id);
+  assert.notEqual(copied.payload.ownerToken, owner);
+
+  const mine = await api(`/api/stories/${copied.payload.id}`, { token: copied.payload.ownerToken });
+  assert.equal(mine.payload.role, 'owner');
+  assert.equal(mine.payload.hero.desc, 'Héroe');
+  assert.equal(mine.payload.friend.desc, 'Amiga');
+  assert.equal(mine.payload.faces.length, 12);
+  assert.equal(mine.payload.generation.state, 'finished');
+  // The original's link does not open the copy, and the copy's owner can continue and delete it.
+  assert.equal((await api(`/api/stories/${copied.payload.id}`, { token: read })).response.status, 401);
+  assert.equal((await api(`/api/stories/${copied.payload.id}`, { method: 'DELETE', token: copied.payload.ownerToken })).response.status, 204);
+  assert.equal((await api(path, { token: owner })).response.status, 200);
+});

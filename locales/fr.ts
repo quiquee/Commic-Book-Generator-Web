@@ -376,6 +376,8 @@ export const fr: Record<MessageKey, string> = {
     'continue.customPlaceholder': 'Écris comment tu veux que ça continue',
     'continue.start': 'COMMENCER LE NUMÉRO {issue}',
     'continue.button': 'Continuer : numéro suivant',
+    'copy.button': 'Enregistrer dans mes BD',
+    'copy.failed': 'Impossible d’enregistrer la copie : {reason}',
     'continue.titleTaken': 'Tu as déjà une BD avec ce titre. Change-le.',
     'continue.recapFailed': 'Impossible de résumer l’histoire : {reason}',
     'continue.createFailed': 'Impossible de créer le numéro suivant : {reason}',

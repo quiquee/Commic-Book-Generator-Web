@@ -231,6 +231,12 @@ export function subscribeToStory(id: string, auth: StoryAuth, subscription: Push
     return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url, lang } });
 }
 
+// Own copy of a finished comic (pages, photos and characters) with its own owner token: lets whoever
+// received a link continue it, redo it or delete it as if it were theirs.
+export function copyStory(id: string, auth: StoryAuth): Promise<StoryKey> {
+    return storyRequest<StoryKey>(`/${id}/copy`, auth, { body: {} });
+}
+
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {
     return storyRequest(`/${id}`, auth, { method: 'DELETE' });
 }

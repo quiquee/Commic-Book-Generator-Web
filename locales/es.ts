@@ -375,6 +375,8 @@ export const es = {
     "continue.customPlaceholder": "Escribe cómo quieres que siga",
     "continue.start": "EMPEZAR EL NÚMERO {issue}",
     "continue.button": "Continuar: número siguiente",
+    "copy.button": "Guardar en mis cómics",
+    "copy.failed": "No se pudo guardar la copia: {reason}",
     "continue.titleTaken": "Ya tienes un cómic con ese título. Cámbialo.",
     "continue.recapFailed": "No se pudo resumir la historia: {reason}",
     "continue.createFailed": "No se pudo crear el siguiente número: {reason}",

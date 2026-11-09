@@ -376,6 +376,8 @@ export const en: Record<MessageKey, string> = {
     'continue.customPlaceholder': 'Write how you want it to go on',
     'continue.start': 'START ISSUE {issue}',
     'continue.button': 'Continue: next issue',
+    'copy.button': 'Save to my comics',
+    'copy.failed': 'Could not save the copy: {reason}',
     'continue.titleTaken': 'You already have a comic with that title. Change it.',
     'continue.recapFailed': 'The story could not be summarized: {reason}',
     'continue.createFailed': 'The next issue could not be created: {reason}',

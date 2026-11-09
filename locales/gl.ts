@@ -376,6 +376,8 @@ export const gl: Record<MessageKey, string> = {
     'continue.customPlaceholder': 'Escribe como queres que siga',
     'continue.start': 'COMEZAR O NÚMERO {issue}',
     'continue.button': 'Continuar: seguinte número',
+    'copy.button': 'Gardar nos meus cómics',
+    'copy.failed': 'Non se puido gardar a copia: {reason}',
     'continue.titleTaken': 'Xa tes un cómic con ese título. Cámbiao.',
     'continue.recapFailed': 'Non se puido resumir a historia: {reason}',
     'continue.createFailed': 'Non se puido crear o seguinte número: {reason}',

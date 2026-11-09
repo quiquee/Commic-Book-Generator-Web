@@ -1083,6 +1083,37 @@ export function createAppServer({
       return;
     }
 
+    // Gives whoever opened a finished comic (reader link or invited co-star) their own copy: same pages, photos and
+    // characters, but a new id and owner token, so they can continue, redo or delete it without touching the original.
+    if (segments.length === 4 && segments[3] === 'copy' && request.method === 'POST') {
+      await readJsonBody(request).catch(() => null);
+      const copy = await serialize(async () => {
+        await prepareStoryStorage();
+        const source = await loadStory(id);
+        const role = await participantRole(request, source);
+        if (role === 'owner') fail(403, 'Esta historia ya es tuya.');
+        if (!isStoryFinished(source.faces)) fail(409, 'La historia aún no ha terminado.');
+        const entries = await readdir(storyStorageDir, { withFileTypes: true });
+        const count = entries.filter((entry) => entry.isFile()
+          && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/i.test(entry.name)).length;
+        if (count >= MAX_STORIES) fail(503, 'Se alcanzó el límite de historias almacenadas.');
+        const now = Date.now();
+        const story = structuredClone(source);
+        // Nothing that ties the copy to the original: its tokens, invitation, subscribers, share statistics or worker state.
+        for (const key of ['readToken', 'sharing', 'subscriptions', 'notified', 'generation', 'invitationId']) delete story[key];
+        story.id = randomUUID();
+        story.ownerToken = randomBytes(32).toString('base64url');
+        story.invitationId = null;
+        story.generation = { state: 'finished', at: now };
+        story.createdAt = now;
+        story.updatedAt = now;
+        await saveStory(story);
+        return story;
+      });
+      sendJson(response, 201, { id: copy.id, ownerToken: copy.ownerToken });
+      return;
+    }
+
     // Rewrites the instructions after Gemini refused the content, then restarts generation. Owner only.
     if (segments.length === 4 && segments[3] === 'instructions' && request.method === 'POST') {
       const body = await readJsonBody(request);

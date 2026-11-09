@@ -21,7 +21,7 @@ import { MusicPlayer } from './MusicPlayer';
 import type { Mood } from './music';
 import { ContinueStory } from './ContinueStory';
 import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
-import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument } from './stories';
+import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
 import { cleanTitle, isTitleTaken, loadTitleHistory, rememberTitle } from './titles';
 
 
@@ -255,11 +255,17 @@ const App: React.FC = () => {
     return route.read ? { kind: 'reader', token: route.read } : null;
   })();
 
+  // A copy someone made of a shared comic joins their own list, then opens as theirs.
+  const saveCopiedStory = (key: StoryKey) => {
+    saveStoryKeys([...loadStoryKeys().filter(item => item.id !== key.id), key]);
+    navigate({ story: key.id });
+  };
+
   const openGuestStory = (storyId: string) => navigate({ join: route.join, token: route.token, story: storyId });
 
   let content: React.ReactNode;
   if (route.story && storyAuth) {
-    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onMood={setStoryMood} />;
+    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onCopied={saveCopiedStory} onMood={setStoryMood} />;
   } else if (route.story) {
     content = (
       <div className="bg-white border-4 border-black p-8 max-w-lg text-center">
