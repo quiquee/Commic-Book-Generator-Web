@@ -98,7 +98,7 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                                         </td>
                                         <td>
                                             <a href={`#/story/${item.id}`}><strong>{item.title}</strong></a>
-                                            <div className="muted small">{item.guestName ? t('pdf.castPair', { host: item.hostName, guest: item.guestName }) : item.hostName}</div>
+                                            <div className="muted small">{item.guestName ? t('pdf.castPair', { host: item.hostName, guest: item.guestName }) : item.hostName}{item.ownerAlias ? ` · ${item.ownerAlias}` : ''}</div>
                                         </td>
                                         <td><span className={`badge ${item.status}`}>{statusLabel(item.status)}</span></td>
                                         <td>{item.completedPages}/{item.totalPages}</td>

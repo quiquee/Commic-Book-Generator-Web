@@ -106,7 +106,7 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
                         <li key={key.id} className="border-2 border-black bg-white p-2 flex flex-wrap items-center gap-2">
                             <div className="flex-1 min-w-[12rem]">
                                 <p className="font-comic text-lg">{loaded?.title ?? (missing ? t('library.unavailable') : t('common.loading'))}{loaded?.continuation && <span className="text-xs font-sans ml-2 border border-black px-1">{t('library.issue', { issue: loaded.continuation.issue })}</span>}</p>
-                                {loaded && <p className="text-xs text-gray-700">{t('library.pages', { done: loaded.completedPages, total: loaded.totalPages })} · {formatDate(loaded.updatedAt)}{loaded.guestName ? ` · ${t('library.with', { name: loaded.guestName })}` : ''}</p>}
+                                {loaded && <p className="text-xs text-gray-700">{t('library.pages', { done: loaded.completedPages, total: loaded.totalPages })} · {formatDate(loaded.updatedAt)}{loaded.guestName ? ` · ${t('library.with', { name: loaded.guestName })}` : ''}{loaded.ownerAlias ? ` · ${t('library.alias', { alias: loaded.ownerAlias })}` : ''}</p>}
                                 {missing && <p className="text-xs text-gray-700">{t('library.gone')}</p>}
                             </div>
                             {loaded && <button type="button" onClick={() => onOpen(key.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{loaded.completedPages >= loaded.totalPages ? t('common.read') : t('common.continue')}</button>}

@@ -16,6 +16,7 @@ import { GuestSetup } from './GuestSetup';
 import { StoryLibrary } from './StoryLibrary';
 import { AdminLibrary } from './AdminLibrary';
 import { StoryView } from './StoryView';
+import { ClaimStory } from './ClaimStory';
 import { clearDraft, loadDraft, saveDraft } from './draft';
 import { MusicPlayer } from './MusicPlayer';
 import type { Mood } from './music';
@@ -263,8 +264,12 @@ const App: React.FC = () => {
 
   const openGuestStory = (storyId: string) => navigate({ join: route.join, token: route.token, story: storyId });
 
+  const openClaimed = useCallback((storyId: string) => navigate({ story: storyId }), []);
+
   let content: React.ReactNode;
-  if (route.story && storyAuth) {
+  if (route.story && route.claim) {
+    content = <ClaimStory key={route.claim} storyId={route.story} claim={route.claim} onClaimed={openClaimed} onExit={returnToMainMenu} />;
+  } else if (route.story && storyAuth) {
     content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onCopied={saveCopiedStory} onMood={setStoryMood} />;
   } else if (route.story) {
     content = (

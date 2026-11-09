@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { appendFile, chmod, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { ownerAlias } from './alias.ts';
 
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -21,7 +22,7 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
  */
 export function createAdminHandler({
   adminPassword, trustProxy = false, auditFile, usage, geminiLog, listActiveStories, getStory,
-  deleteStoryById, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
+  deleteStoryById, transferCopy = async () => null, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
 }) {
   const secret = randomBytes(32);
   const passwordHash = hash(adminPassword || '');
@@ -64,6 +65,7 @@ export function createAdminHandler({
     return {
       ...pick(record, ['id', 'title', 'hostName', 'guestName', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy']),
       completedPages, totalPages: 12,
+      ...(record.ownerToken ? { ownerAlias: ownerAlias(record.ownerToken) } : {}),
       status: deleted ? 'deleted' : completedPages >= 12 ? 'complete' : 'in_progress',
       hasFriend: record.hasFriend ?? !!record.friend, usage: totals ?? emptyTotals(),
       shares: record.sharing?.shares ?? 0, opens: record.sharing?.opens ?? 0,
@@ -204,7 +206,7 @@ export function createAdminHandler({
         const options = listOptions(url.searchParams);
         const items = (await allStories()).filter((entry) =>
           (options.status === 'all' || entry.status === options.status)
-          && fold([entry.title, entry.hostName, entry.guestName].join(' ')).includes(fold(options.query)));
+          && fold([entry.title, entry.hostName, entry.guestName, entry.ownerAlias].join(' ')).includes(fold(options.query)));
         const value = (entry) => options.sort === 'cost' ? entry.usage.costUsd
           : options.sort === 'title' ? fold(entry.title) : typeof entry[options.sort] === 'number'
             ? entry[options.sort] : Date.parse(entry[options.sort]) || 0;
@@ -254,6 +256,16 @@ export function createAdminHandler({
         resumeStory(id);
         return json(200, { id: record.id, ownerToken: record.ownerToken });
       }
+      // Makes a copy of a finished comic for someone else: returns a one-time link that hands the copy over.
+      const transfer = /^\/api\/admin\/stories\/([^/]+)\/transfer$/.exec(path);
+      if (transfer && req.method === 'POST') {
+        let id;
+        try { id = decodeURIComponent(transfer[1]); } catch { fail(400, 'Identificador no válido.'); }
+        const copy = await transferCopy(id);
+        if (!copy) fail(404, 'Historia no encontrada.');
+        await audit('story_transfer', req, id);
+        return json(201, copy);
+      }
       const match = /^\/api\/admin\/stories\/([^/]+)(?:\/image\/(hero|friend|cover|page-(?:[1-9]|1[01])))?$/.exec(path);
       if (match) {
         let id;
@@ -290,6 +302,7 @@ export function createAdminHandler({
           return json(200, {
             ...pick(summary, ['id', 'title', 'hostName', 'guestName', 'createdAt', 'updatedAt', 'deletedAt',
               'deletedBy', 'status', 'completedPages', 'totalPages', 'shares', 'opens', 'lastSharedAt', 'lastOpenedAt']),
+            ...pick(summary, ['ownerAlias']),
             ...pick(source, ['tone', 'styleGuide', 'invitationId']),
             ...(source.settings ? { settings: pick(source.settings, ['genre', 'language', 'premise', 'richMode']) } : {}),
             faces: !record ? [] : (record.faces ?? []).map((face) => ({
