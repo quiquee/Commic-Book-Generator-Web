@@ -677,3 +677,86 @@ test('the next issue copies the cast and look of a finished comic and refuses un
   assert.deepEqual(next.payload.continuation, { fromId: source.payload.id, issue: 2, recap: 'Resumen.', direction: 'Perdonar' });
   assert.equal(next.payload.faces.length, 0);
 });
+
+test('a reader gets their own copy of a finished comic, with photos and characters, and cannot touch the original', async () => {
+  const source = await api('/api/stories', { method: 'POST', body: { ...storyBody(), friend: { base64: JPEG, desc: 'Amiga' } } });
+  const owner = source.payload.ownerToken;
+  const path = `/api/stories/${source.payload.id}`;
+  const shared = await api(`${path}/share`, { method: 'POST', token: owner, body: {} });
+  const read = shared.payload.token;
+
+  const early = await api(`${path}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(early.response.status, 409);
+
+  const image = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(16), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  for (let page = 0; page <= 11; page++) {
+    const id = page === 0 ? 'cover' : `page-${page}`;
+    await api(`${path}/faces/${id}`, { method: 'PUT', token: owner, body: faceBody(id, { imageUrl: image }) });
+  }
+
+  assert.equal((await api(`${path}/copy`, { method: 'POST', body: {} })).response.status, 401);
+  assert.equal((await api(`${path}/copy`, { method: 'POST', token: owner, body: {} })).response.status, 403);
+
+  const copied = await api(`${path}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(copied.response.status, 201);
+  assert.notEqual(copied.payload.id, source.payload.id);
+  assert.notEqual(copied.payload.ownerToken, owner);
+
+  const mine = await api(`/api/stories/${copied.payload.id}`, { token: copied.payload.ownerToken });
+  assert.equal(mine.payload.role, 'owner');
+  assert.equal(mine.payload.hero.desc, 'Héroe');
+  assert.equal(mine.payload.friend.desc, 'Amiga');
+  assert.equal(mine.payload.faces.length, 12);
+  assert.equal(mine.payload.generation.state, 'finished');
+  // The original's link does not open the copy, and the copy's owner can continue and delete it.
+  assert.equal((await api(`/api/stories/${copied.payload.id}`, { token: read })).response.status, 401);
+  assert.equal((await api(`/api/stories/${copied.payload.id}`, { method: 'DELETE', token: copied.payload.ownerToken })).response.status, 204);
+  assert.equal((await api(path, { token: owner })).response.status, 200);
+});
+
+test('the admin transfers a copy through a one-time link, and alias names stay with the owner and the admin', async () => {
+  await stopServer();
+  await startServer({ adminPassword: 'PRIVATE_ADMIN_PASSWORD' });
+  const source = await api('/api/stories', { method: 'POST', body: { ...storyBody(), friend: { base64: JPEG, desc: 'Amiga' } } });
+  const owner = source.payload.ownerToken;
+  const path = `/api/stories/${source.payload.id}`;
+  const login = await api('/api/admin/login', { method: 'POST', body: { password: 'PRIVATE_ADMIN_PASSWORD' } });
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+
+  assert.equal((await api(`/api/admin/stories/${source.payload.id}/transfer`, { method: 'POST', headers: { cookie, 'x-admin-request': '1' } })).response.status, 409);
+
+  const image = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(16), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  for (let page = 0; page <= 11; page++) {
+    const id = page === 0 ? 'cover' : `page-${page}`;
+    await api(`${path}/faces/${id}`, { method: 'PUT', token: owner, body: faceBody(id, { imageUrl: image }) });
+  }
+
+  assert.equal((await api(`/api/admin/stories/${source.payload.id}/transfer`, { method: 'POST', headers: { 'x-admin-request': '1' } })).response.status, 401);
+  const made = await api(`/api/admin/stories/${source.payload.id}/transfer`, { method: 'POST', headers: { cookie, 'x-admin-request': '1' } });
+  assert.equal(made.response.status, 201);
+  assert.notEqual(made.payload.id, source.payload.id);
+  assert.match(made.payload.ownerAlias, /\d/);
+  const copyPath = `/api/stories/${made.payload.id}`;
+
+  assert.equal((await api(`${copyPath}/claim`, { method: 'POST', body: { claim: 'nope' } })).response.status, 404);
+  const claimed = await api(`${copyPath}/claim`, { method: 'POST', body: { claim: made.payload.claim } });
+  assert.equal(claimed.response.status, 200);
+  assert.equal((await api(`${copyPath}/claim`, { method: 'POST', body: { claim: made.payload.claim } })).response.status, 404);
+
+  const mine = await api(copyPath, { token: claimed.payload.ownerToken });
+  assert.equal(mine.payload.role, 'owner');
+  assert.equal(mine.payload.friend.desc, 'Amiga');
+  assert.equal(mine.payload.faces.length, 12);
+  assert.equal(mine.payload.ownerAlias, made.payload.ownerAlias);
+  assert.equal(JSON.stringify(mine.payload).includes('claimToken'), false);
+  const original = await api(path, { token: owner });
+  assert.notEqual(original.payload.ownerAlias, mine.payload.ownerAlias);
+
+  const detail = await api(`/api/admin/stories/${made.payload.id}`, { headers: { cookie } });
+  assert.equal(detail.payload.ownerAlias, made.payload.ownerAlias);
+  assert.equal(JSON.stringify(detail.payload).includes(claimed.payload.ownerToken), false);
+  // A reader never sees the alias.
+  const shared = await api(`${path}/share`, { method: 'POST', token: owner, body: {} });
+  const asReader = await api(path, { token: shared.payload.token });
+  assert.equal(asReader.payload.ownerAlias, undefined);
+});

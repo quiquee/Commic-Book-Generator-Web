@@ -12,6 +12,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createStoryWorker } from './storyWorker.mjs';
 import { createPushService, validateSubscription } from './push.mjs';
 import { isStoryFinished, nextPageToGenerate } from './storyLogic.ts';
+import { ownerAlias } from './alias.ts';
 import { translateServerText } from './locales/serverText.ts';
 
 const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
@@ -727,6 +728,17 @@ export function createAppServer({
     adminPassword, trustProxy, auditFile, usage, geminiLog, listActiveStories, getStory: getStoryOrNull,
     resumeStory: (id) => worker?.start(id),
     deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
+    transferCopy: (id) => serialize(async () => {
+      await prepareStoryStorage();
+      let source;
+      try { source = await loadStory(id); } catch (error) {
+        if (error instanceof HttpError && error.status === 404) return null;
+        throw error;
+      }
+      if (!isStoryFinished(source.faces)) fail(409, 'La historia aún no ha terminado.');
+      const copy = await copyStoryRecord(source, { claim: true });
+      return { id: copy.id, claim: copy.claimToken, ownerAlias: ownerAlias(copy.ownerToken) };
+    }),
     dailyBudgetUsd, dailyTokenLimit, dev,
     serveAdminPage: async (request, response) => {
       if (dev) {
@@ -749,6 +761,28 @@ export function createAppServer({
       }
     },
   });
+
+  // Own copy of a comic: same pages, photos and characters, but a new id and owner token. Nothing ties it to
+  // the original (tokens, invitation, subscribers, share statistics or worker state). Call inside serialize().
+  // `claim` makes the copy hand over its owner token once, to whoever opens the transfer link.
+  async function copyStoryRecord(source, { claim = false } = {}) {
+    const entries = await readdir(storyStorageDir, { withFileTypes: true });
+    const count = entries.filter((entry) => entry.isFile()
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/i.test(entry.name)).length;
+    if (count >= MAX_STORIES) fail(503, 'Se alcanzó el límite de historias almacenadas.');
+    const now = Date.now();
+    const story = structuredClone(source);
+    for (const key of ['readToken', 'sharing', 'subscriptions', 'notified', 'generation', 'invitationId', 'claimToken']) delete story[key];
+    story.id = randomUUID();
+    story.ownerToken = randomBytes(32).toString('base64url');
+    story.invitationId = null;
+    story.generation = { state: 'finished', at: now };
+    story.createdAt = now;
+    story.updatedAt = now;
+    if (claim) story.claimToken = randomBytes(32).toString('base64url');
+    await saveStory(story);
+    return story;
+  }
 
   async function participantRole(request, story) {
     const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? '');
@@ -945,7 +979,7 @@ export function createAppServer({
           role,
           generation: story.generation ?? null,
           // Lets the owner redo the comic with the same invited co-star.
-          ...(role === 'owner' ? { invitationId: story.invitationId ?? null } : {}),
+          ...(role === 'owner' ? { invitationId: story.invitationId ?? null, ownerAlias: ownerAlias(story.ownerToken) } : {}),
           faces: hasAfter ? story.faces.filter((face) => face.version > after) : story.faces,
           ...(!hasAfter ? { hero: story.hero, friend: story.friend } : {}),
         };
@@ -1080,6 +1114,40 @@ export function createAppServer({
         return story.readToken;
       });
       sendJson(response, 200, { token });
+      return;
+    }
+
+    // Exchanges the one-time token of a transfer link (made by the admin) for the owner key of that copy.
+    if (segments.length === 4 && segments[3] === 'claim' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (!isObject(body) || !exactKeys(body, ['claim']) || typeof body.claim !== 'string') fail(400, 'El enlace no es válido.');
+      const key = await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        if (typeof story.claimToken !== 'string' || !tokenMatches(body.claim, story.claimToken)) {
+          fail(404, 'Este enlace ya se ha usado o no es válido.');
+        }
+        delete story.claimToken;
+        await saveStory(story);
+        return { id: story.id, ownerToken: story.ownerToken };
+      });
+      sendJson(response, 200, key);
+      return;
+    }
+
+    // Gives whoever opened a finished comic (reader link or invited co-star) their own copy: same pages, photos and
+    // characters, but a new id and owner token, so they can continue, redo or delete it without touching the original.
+    if (segments.length === 4 && segments[3] === 'copy' && request.method === 'POST') {
+      await readJsonBody(request).catch(() => null);
+      const copy = await serialize(async () => {
+        await prepareStoryStorage();
+        const source = await loadStory(id);
+        const role = await participantRole(request, source);
+        if (role === 'owner') fail(403, 'Esta historia ya es tuya.');
+        if (!isStoryFinished(source.faces)) fail(409, 'La historia aún no ha terminado.');
+        return copyStoryRecord(source);
+      });
+      sendJson(response, 201, { id: copy.id, ownerToken: copy.ownerToken, ownerAlias: ownerAlias(copy.ownerToken) });
       return;
     }
 

@@ -4,7 +4,7 @@ import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
 import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
-import { createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument } from './stories';
+import { copyStory, createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
@@ -17,13 +17,15 @@ interface StoryViewProps {
     storyId: string;
     auth: StoryAuth;
     onExit: () => void;
+    // The comic was copied into the visitor's own library: opens that copy.
+    onCopied?: (key: StoryKey) => void;
     // Tells the music player which mood fits this comic (null when leaving it).
     onMood?: (mood: Mood | null) => void;
 }
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
-export function StoryView({ storyId, auth, onExit, onMood }: StoryViewProps) {
+export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryViewProps) {
     const [story, setStory] = useState<StoryDocument | null>(null);
     const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
     const [error, setError] = useState('');
@@ -209,6 +211,15 @@ export function StoryView({ storyId, auth, onExit, onMood }: StoryViewProps) {
         }
     };
 
+    // Whoever opened a finished comic through a link (reader or invited co-star) keeps their own copy.
+    const saveCopy = async () => {
+        try {
+            onCopied?.(await copyStory(storyId, auth));
+        } catch (failure) {
+            setError(t('copy.failed', { reason: errorMessage(failure) }));
+        }
+    };
+
     const handleSheetClick = (index: number) => {
         if (!story) return;
         if (index === 0 && currentSheetIndex === 0) return;
@@ -265,6 +276,7 @@ export function StoryView({ storyId, auth, onExit, onMood }: StoryViewProps) {
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
                 onShare={shareLink}
+                onSaveCopy={!isOwner && onCopied && story && isStoryFinished(story.faces) ? saveCopy : undefined}
                 onContinue={isOwner && story && isStoryFinished(story.faces) ? () => setContinuing(true) : undefined}
                 issue={story.continuation?.issue}
                 soundEffects={story.soundEffects}

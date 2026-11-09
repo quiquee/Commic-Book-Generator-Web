@@ -50,6 +50,8 @@ export interface StoryMeta extends StorySummary {
     generation: GenerationStatus | null;
     // Only sent to the owner.
     invitationId?: string | null;
+    // Made-up name of this comic's owner key, only sent to the owner (the admin sees it too).
+    ownerAlias?: string;
 }
 
 export interface StoryDocument extends StoryMeta {
@@ -68,13 +70,15 @@ export interface AppRoute {
     token: string | null;
     // Read-only link token (back-cover Share button).
     read: string | null;
+    // One-time token of a transfer link made by the admin: hands over a copy of a comic.
+    claim: string | null;
 }
 
 export const storyStorageKey = 'infinite-heroes.stories';
 
 export function getRoute(): AppRoute {
     const params = new URLSearchParams(window.location.hash.slice(1));
-    return { story: params.get('story'), join: params.get('join'), token: params.get('token'), read: params.get('read') };
+    return { story: params.get('story'), join: params.get('join'), token: params.get('token'), read: params.get('read'), claim: params.get('claim') };
 }
 
 export function routeHash(route: Partial<AppRoute>): string {
@@ -82,6 +86,7 @@ export function routeHash(route: Partial<AppRoute>): string {
     if (route.join) params.set('join', route.join);
     if (route.token) params.set('token', route.token);
     if (route.read) params.set('read', route.read);
+    if (route.claim) params.set('claim', route.claim);
     if (route.story) params.set('story', route.story);
     const value = params.toString();
     return value ? `#${value}` : '';
@@ -229,6 +234,17 @@ export async function createReadLink(id: string, auth: StoryAuth, baseUrl: strin
 // `lang` is the interface language the notifications should be written in.
 export function subscribeToStory(id: string, auth: StoryAuth, subscription: PushSubscriptionJSON, url: string, lang: string): Promise<{ subscribed: boolean }> {
     return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url, lang } });
+}
+
+// Own copy of a finished comic (pages, photos and characters) with its own owner token: lets whoever
+// received a link continue it, redo it or delete it as if it were theirs.
+export function copyStory(id: string, auth: StoryAuth): Promise<StoryKey> {
+    return storyRequest<StoryKey>(`/${id}/copy`, auth, { body: {} });
+}
+
+// Takes over the copy a transfer link points to (works once).
+export function claimStory(id: string, claim: string): Promise<StoryKey> {
+    return storyRequest<StoryKey>(`/${id}/claim`, null, { body: { claim } });
 }
 
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {

@@ -46,6 +46,8 @@ export interface AdminStoryItem {
     deletedAt?: number;
     deletedBy?: 'owner' | 'admin';
     hasFriend: boolean;
+    // Made-up name of the owner key (absent for deleted comics).
+    ownerAlias?: string;
     usage: UsageTotals;
     // Times the Share button was used / times a shared link was opened.
     shares: number;
@@ -73,6 +75,7 @@ export interface AdminFace {
 
 export interface AdminStoryDetail {
     id: string;
+    ownerAlias?: string;
     title: string;
     hostName: string;
     guestName: string;

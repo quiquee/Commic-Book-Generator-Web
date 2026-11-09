@@ -40,6 +40,8 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
     const [confirmTitle, setConfirmTitle] = useState('');
     const [deleting, setDeleting] = useState(false);
     const [pdfBusy, setPdfBusy] = useState(false);
+    const [transferring, setTransferring] = useState(false);
+    const [transferLink, setTransferLink] = useState<{ url: string; alias: string } | null>(null);
     const dialogRef = useRef<HTMLDialogElement>(null);
 
     useEffect(() => {
@@ -72,6 +74,23 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
             if (failure instanceof AdminAuthError) onAuthLost();
             else setError(errorText(failure));
             setDeleting(false);
+        }
+    };
+
+    // Makes a copy of this comic and a one-time link that gives it to whoever opens it.
+    const transfer = async () => {
+        if (!story) return;
+        setTransferring(true);
+        setError('');
+        try {
+            const copy = await adminRequest<{ id: string; claim: string; ownerAlias: string }>(`/stories/${encodeURIComponent(story.id)}/transfer`, { method: 'POST' });
+            const params = new URLSearchParams({ story: copy.id, claim: copy.claim });
+            setTransferLink({ url: `${window.location.origin}/#${params.toString()}`, alias: copy.ownerAlias });
+        } catch (failure) {
+            if (failure instanceof AdminAuthError) onAuthLost();
+            else setError(errorText(failure));
+        } finally {
+            setTransferring(false);
         }
     };
 
@@ -129,6 +148,7 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                     </figure>
                 )}
                 <dl>
+                    {story.ownerAlias && <><dt>{t('admin.ownerAlias')}</dt><dd>{story.ownerAlias}</dd></>}
                     <dt>{t('admin.created')}</dt><dd>{formatDate(story.createdAt)}</dd>
                     {story.updatedAt !== undefined && <><dt>{t('admin.sort.updated')}</dt><dd>{formatDate(story.updatedAt)}</dd></>}
                     {story.deletedAt && <><dt>{t('admin.status.deleted')}</dt><dd>{formatDate(story.deletedAt)} ({story.deletedBy === 'admin' ? t('admin.byAdmin') : t('admin.byOwner')})</dd></>}
@@ -196,6 +216,25 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                         ))}
                     </ul>
                     {story.styleGuide && <details><summary>{t('admin.styleGuide')}</summary><pre>{story.styleGuide}</pre></details>}
+                </section>
+            )}
+
+            {!deleted && story.status === 'complete' && (
+                <section className="card" aria-label={t('admin.transfer')}>
+                    <h2>{t('admin.transfer')}</h2>
+                    <p>{t('admin.transferHint')}</p>
+                    <div className="row">
+                        <button type="button" onClick={transfer} disabled={transferring}>{transferring ? t('admin.transferring') : t('admin.transferButton')}</button>
+                    </div>
+                    {transferLink && (
+                        <>
+                            <p className="small">{t('admin.transferReady', { alias: transferLink.alias })}</p>
+                            <div className="row">
+                                <input readOnly aria-label={t('admin.transferLinkLabel')} value={transferLink.url} onFocus={event => event.target.select()} />
+                                <button type="button" className="secondary" onClick={() => navigator.clipboard?.writeText(transferLink.url).then(() => setError(''), () => setError(t('admin.transferCopyFailed')))}>{t('admin.transferCopy')}</button>
+                            </div>
+                        </>
+                    )}
                 </section>
             )}
 
