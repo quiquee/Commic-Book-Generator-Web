@@ -22,7 +22,7 @@ import { MusicPlayer } from './MusicPlayer';
 import type { Mood } from './music';
 import { ContinueStory } from './ContinueStory';
 import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
-import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveStoryKeys, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
+import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveCopiedKeys, saveStoryKeys, type CopiedStory, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
 import { cleanTitle, isTitleTaken, loadTitleHistory, rememberTitle } from './titles';
 
 
@@ -257,8 +257,8 @@ const App: React.FC = () => {
   })();
 
   // A copy someone made of a shared comic joins their own list, then opens as theirs.
-  const saveCopiedStory = (key: StoryKey) => {
-    saveStoryKeys([...loadStoryKeys().filter(item => item.id !== key.id), key]);
+  const saveCopiedStory = (key: CopiedStory) => {
+    saveCopiedKeys(key);
     navigate({ story: key.id });
   };
 

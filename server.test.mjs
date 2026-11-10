@@ -676,6 +676,86 @@ test('the next issue copies the cast and look of a finished comic and refuses un
   assert.equal(next.payload.friend.desc, 'Amiga');
   assert.deepEqual(next.payload.continuation, { fromId: source.payload.id, issue: 2, recap: 'Resumen.', direction: 'Perdonar' });
   assert.equal(next.payload.faces.length, 0);
+  // Both issues are one series, and the person who continues it keeps the same key (and made-up name).
+  assert.deepEqual(next.payload.series, { id: source.payload.id, issue: 2 });
+  assert.deepEqual((await api(`/api/stories/${source.payload.id}`, { token: owner })).payload.series, { id: source.payload.id, issue: 1 });
+  assert.equal(created.payload.ownerToken, owner);
+});
+
+// Fills the twelve pages of a comic; `seed` makes its images differ from those of other comics.
+async function finishStory(id, token, seed) {
+  const image = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(16, seed), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  for (let page = 0; page <= 11; page++) {
+    const faceId = page === 0 ? 'cover' : `page-${page}`;
+    const saved = await api(`/api/stories/${id}/faces/${faceId}`, { method: 'PUT', token, body: faceBody(faceId, { imageUrl: image }) });
+    assert.equal(saved.response.status, 200);
+  }
+}
+
+async function nextIssue(from, token, title) {
+  const created = await api('/api/stories', {
+    method: 'POST', body: { ...storyBody(), title, continuation: { fromId: from, token, recap: 'Resumen.', direction: `Rumbo de ${title}` } },
+  });
+  assert.equal(created.response.status, 201);
+  return created.payload;
+}
+
+const storyRecord = async (id) => JSON.parse(await readFile(join(storiesDir, `${id}.json`), 'utf8'));
+
+test('copying an issue also copies the issues before it, and the copies stay in the series', async () => {
+  const first = (await api('/api/stories', { method: 'POST', body: storyBody() })).payload;
+  await finishStory(first.id, first.ownerToken, 1);
+  const second = await nextIssue(first.id, first.ownerToken, 'Serie #2');
+  await finishStory(second.id, second.ownerToken, 2);
+  const third = await nextIssue(second.id, second.ownerToken, 'Serie #3');
+  await finishStory(third.id, third.ownerToken, 3);
+  const read = (await api(`/api/stories/${second.id}/share`, { method: 'POST', token: first.ownerToken, body: {} })).payload.token;
+
+  const copied = await api(`/api/stories/${second.id}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(copied.response.status, 201);
+  assert.equal(copied.payload.keys.length, 2);
+  assert.equal(copied.payload.id, copied.payload.keys[1].id);
+  assert.ok(copied.payload.keys.every((key) => key.ownerToken === copied.payload.ownerToken && key.ownerToken !== first.ownerToken));
+  const [copyOne, copyTwo] = await Promise.all(copied.payload.keys.map((key) => storyRecord(key.id)));
+  assert.deepEqual(copyOne.series, { id: first.id, issue: 1, originId: first.id, parentOriginId: null });
+  assert.deepEqual(copyTwo.series, { id: first.id, issue: 2, originId: second.id, parentOriginId: first.id });
+  assert.equal(copyTwo.continuation.fromId, copyOne.id);
+  assert.equal(copyOne.faces.length, 12);
+  assert.equal((await readdir(storiesDir)).length, 5);
+
+  // A different continuation of the copy is an alternative #3 of the same series.
+  const other = await nextIssue(copyTwo.id, copied.payload.ownerToken, 'Serie #3 bis');
+  assert.deepEqual((await storyRecord(other.id)).series, { id: first.id, issue: 3, originId: other.id, parentOriginId: second.id });
+  assert.deepEqual((await storyRecord(third.id)).series, { id: first.id, issue: 3, originId: third.id, parentOriginId: second.id });
+});
+
+test('comics made before series existed are placed by their continuation link and their cover', async () => {
+  const first = (await api('/api/stories', { method: 'POST', body: storyBody() })).payload;
+  await finishStory(first.id, first.ownerToken, 1);
+  const second = await nextIssue(first.id, first.ownerToken, 'Vieja #2');
+  await finishStory(second.id, second.ownerToken, 2);
+  // An old copy of #1: same pages, no link to its original. And none of the three has series data.
+  const oldCopy = { ...(await storyRecord(first.id)), id: '11111111-1111-4111-8111-111111111111', ownerToken: 'old-copy-token', createdAt: Date.now() + 1000 };
+  await writeFile(join(storiesDir, `${oldCopy.id}.json`), JSON.stringify(oldCopy));
+  for (const id of [first.id, second.id, oldCopy.id]) {
+    const record = await storyRecord(id);
+    delete record.series;
+    await writeFile(join(storiesDir, `${id}.json`), JSON.stringify(record));
+  }
+
+  assert.deepEqual((await api(`/api/stories/${second.id}`, { token: first.ownerToken })).payload.series, { id: first.id, issue: 2 });
+  assert.deepEqual((await api(`/api/stories/${oldCopy.id}`, { token: 'old-copy-token' })).payload.series, { id: first.id, issue: 1 });
+  // Continuing the old copy gives an alternative #2 of the original's series.
+  const branch = await nextIssue(oldCopy.id, 'old-copy-token', 'Vieja #2 bis');
+  assert.deepEqual((await storyRecord(branch.id)).series, { id: first.id, issue: 2, originId: branch.id, parentOriginId: first.id });
+  // Reading placed them without writing anything to the old records.
+  assert.equal((await storyRecord(second.id)).series, undefined);
+
+  const read = (await api(`/api/stories/${second.id}/share`, { method: 'POST', token: first.ownerToken, body: {} })).payload.token;
+  const copied = await api(`/api/stories/${second.id}/copy`, { method: 'POST', token: read, body: {} });
+  assert.equal(copied.payload.keys.length, 2);
+  assert.deepEqual((await storyRecord(copied.payload.keys[0].id)).series, { id: first.id, issue: 1, originId: first.id, parentOriginId: null });
+  assert.deepEqual((await storyRecord(copied.payload.id)).series, { id: first.id, issue: 2, originId: second.id, parentOriginId: first.id });
 });
 
 test('a reader gets their own copy of a finished comic, with photos and characters, and cannot touch the original', async () => {
@@ -736,11 +816,13 @@ test('the admin transfers a copy through a one-time link, and alias names stay w
   assert.equal(made.response.status, 201);
   assert.notEqual(made.payload.id, source.payload.id);
   assert.match(made.payload.ownerAlias, /\d/);
+  assert.equal(made.payload.issues, 1);
   const copyPath = `/api/stories/${made.payload.id}`;
 
   assert.equal((await api(`${copyPath}/claim`, { method: 'POST', body: { claim: 'nope' } })).response.status, 404);
   const claimed = await api(`${copyPath}/claim`, { method: 'POST', body: { claim: made.payload.claim } });
   assert.equal(claimed.response.status, 200);
+  assert.deepEqual(claimed.payload.keys, [{ id: made.payload.id, ownerToken: claimed.payload.ownerToken }]);
   assert.equal((await api(`${copyPath}/claim`, { method: 'POST', body: { claim: made.payload.claim } })).response.status, 404);
 
   const mine = await api(copyPath, { token: claimed.payload.ownerToken });
@@ -759,4 +841,17 @@ test('the admin transfers a copy through a one-time link, and alias names stay w
   const shared = await api(`${path}/share`, { method: 'POST', token: owner, body: {} });
   const asReader = await api(path, { token: shared.payload.token });
   assert.equal(asReader.payload.ownerAlias, undefined);
+
+  // Transferring issue #2 hands over #1 and #2 through the one link.
+  const second = await nextIssue(source.payload.id, owner, 'Traspaso #2');
+  await finishStory(second.id, second.ownerToken, 2);
+  const series = await api(`/api/admin/stories/${second.id}/transfer`, { method: 'POST', headers: { cookie, 'x-admin-request': '1' } });
+  assert.equal(series.payload.issues, 2);
+  const both = await api(`/api/stories/${series.payload.id}/claim`, { method: 'POST', body: { claim: series.payload.claim } });
+  assert.equal(both.payload.keys.length, 2);
+  assert.equal(both.payload.keys[1].id, series.payload.id);
+  const firstCopy = await api(`/api/stories/${both.payload.keys[0].id}`, { token: both.payload.keys[0].ownerToken });
+  assert.equal(firstCopy.payload.role, 'owner');
+  assert.deepEqual(firstCopy.payload.series, { id: source.payload.id, issue: 1 });
+  assert.equal(firstCopy.payload.ownerAlias, series.payload.ownerAlias);
 });

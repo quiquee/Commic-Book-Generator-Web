@@ -46,6 +46,8 @@ export interface StoryMeta extends StorySummary {
     version: number;
     // Set when this comic is issue 2 or later of a series.
     continuation?: { fromId: string; issue: number; recap: string; direction: string } | null;
+    // The series this comic belongs to and its number in it (a comic on its own is issue 1 of its series).
+    series?: { id: string; issue: number };
     role: 'owner' | 'guest' | 'reader';
     generation: GenerationStatus | null;
     // Only sent to the owner.
@@ -236,15 +238,26 @@ export function subscribeToStory(id: string, auth: StoryAuth, subscription: Push
     return storyRequest(`/${id}/subscriptions`, auth, { body: { subscription, url, lang } });
 }
 
-// Own copy of a finished comic (pages, photos and characters) with its own owner token: lets whoever
-// received a link continue it, redo it or delete it as if it were theirs.
-export function copyStory(id: string, auth: StoryAuth): Promise<StoryKey> {
-    return storyRequest<StoryKey>(`/${id}/copy`, auth, { body: {} });
+// A copy of a comic comes with copies of the issues before it: `keys` has them all, first issue first.
+export type CopiedStory = StoryKey & { keys?: StoryKey[] };
+
+// Adds the comics of a copy to «Mis cómics».
+export function saveCopiedKeys(copy: CopiedStory): void {
+    let saved: StoryKey[] = [];
+    try { saved = loadStoryKeys(); } catch { /* start a new list */ }
+    const added = (copy.keys?.length ? copy.keys : [copy]).map(({ id, ownerToken }) => ({ id, ownerToken }));
+    saveStoryKeys([...saved.filter(item => !added.some(key => key.id === item.id)), ...added]);
 }
 
-// Takes over the copy a transfer link points to (works once).
-export function claimStory(id: string, claim: string): Promise<StoryKey> {
-    return storyRequest<StoryKey>(`/${id}/claim`, null, { body: { claim } });
+// Own copy of a finished comic and of the issues before it (pages, photos and characters) with its own owner
+// token: lets whoever received a link continue it, redo it or delete it as if it were theirs.
+export function copyStory(id: string, auth: StoryAuth): Promise<CopiedStory> {
+    return storyRequest<CopiedStory>(`/${id}/copy`, auth, { body: {} });
+}
+
+// Takes over the copy a transfer link points to, with the issues before it (works once).
+export function claimStory(id: string, claim: string): Promise<CopiedStory> {
+    return storyRequest<CopiedStory>(`/${id}/claim`, null, { body: { claim } });
 }
 
 export function deleteStory(id: string, auth: StoryAuth): Promise<void> {

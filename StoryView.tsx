@@ -4,7 +4,7 @@ import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
 import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
-import { copyStory, createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
+import { copyStory, createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type CopiedStory, type StoryAuth, type StoryDocument } from './stories';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
@@ -18,7 +18,7 @@ interface StoryViewProps {
     auth: StoryAuth;
     onExit: () => void;
     // The comic was copied into the visitor's own library: opens that copy.
-    onCopied?: (key: StoryKey) => void;
+    onCopied?: (key: CopiedStory) => void;
     // Tells the music player which mood fits this comic (null when leaving it).
     onMood?: (mood: Mood | null) => void;
 }

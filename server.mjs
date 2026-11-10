@@ -13,6 +13,7 @@ import { createStoryWorker } from './storyWorker.mjs';
 import { createPushService, validateSubscription } from './push.mjs';
 import { isStoryFinished, nextPageToGenerate } from './storyLogic.ts';
 import { ownerAlias } from './alias.ts';
+import { planSeries, seriesEntry } from './series.mjs';
 import { translateServerText } from './locales/serverText.ts';
 
 const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
@@ -588,6 +589,33 @@ export function createAppServer({
     }
   }
 
+  // Series data of every comic (see series.mjs). Files are read again only when they changed on disk.
+  // Call inside serialize().
+  const seriesCache = new Map();
+  async function seriesIndex() {
+    await prepareStoryStorage();
+    const present = new Set();
+    for (const file of await readdir(storyStorageDir, { withFileTypes: true })) {
+      const id = file.name.slice(0, -5);
+      if (!file.isFile() || !file.name.endsWith('.json') || !safeInvitationId(id)) continue;
+      const info = await stat(join(storyStorageDir, file.name));
+      present.add(id);
+      const cached = seriesCache.get(id);
+      if (!cached || cached.mtimeMs !== info.mtimeMs || cached.size !== info.size) {
+        seriesCache.set(id, { mtimeMs: info.mtimeMs, size: info.size, entry: seriesEntry(await loadStory(id)) });
+      }
+    }
+    for (const id of [...seriesCache.keys()]) if (!present.has(id)) seriesCache.delete(id);
+    const entries = [...seriesCache.values()].map((cached) => cached.entry);
+    const plan = planSeries(entries);
+    return new Map(entries.map((entry) => [entry.id, { ...entry, series: plan.get(entry.id) }]));
+  }
+
+  // Comics made before series existed have no stored series data until migrateSeries.mjs writes it.
+  async function seriesOf(story) {
+    return story.series ?? (await seriesIndex()).get(story.id).series;
+  }
+
   async function getStoryOrNull(id) {
     if (!safeInvitationId(id)) return null;
     return serialize(async () => {
@@ -736,8 +764,9 @@ export function createAppServer({
         throw error;
       }
       if (!isStoryFinished(source.faces)) fail(409, 'La historia aún no ha terminado.');
-      const copy = await copyStoryRecord(source, { claim: true });
-      return { id: copy.id, claim: copy.claimToken, ownerAlias: ownerAlias(copy.ownerToken) };
+      const copies = await copySeriesChain(source, { claim: true });
+      const copy = copies.at(-1);
+      return { id: copy.id, claim: copy.claimToken, ownerAlias: ownerAlias(copy.ownerToken), issues: copies.length };
     }),
     dailyBudgetUsd, dailyTokenLimit, dev,
     serveAdminPage: async (request, response) => {
@@ -762,26 +791,61 @@ export function createAppServer({
     },
   });
 
-  // Own copy of a comic: same pages, photos and characters, but a new id and owner token. Nothing ties it to
-  // the original (tokens, invitation, subscribers, share statistics or worker state). Call inside serialize().
-  // `claim` makes the copy hand over its owner token once, to whoever opens the transfer link.
-  async function copyStoryRecord(source, { claim = false } = {}) {
-    const entries = await readdir(storyStorageDir, { withFileTypes: true });
-    const count = entries.filter((entry) => entry.isFile()
-      && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/i.test(entry.name)).length;
-    if (count >= MAX_STORIES) fail(503, 'Se alcanzó el límite de historias almacenadas.');
+  // Own copy of a comic and of the issues before it (#1 up to this one): same pages, photos and characters, but new
+  // ids and one new owner token for all of them. The copies stay in the series, at the same place as their
+  // originals; nothing else ties them to these (tokens, invitation, subscribers, share statistics or worker state).
+  // Returns the copies, first issue first. Call inside serialize().
+  // `claim` makes the last copy hand over the owner token once, to whoever opens the transfer link.
+  async function copySeriesChain(source, { claim = false } = {}) {
+    const index = await seriesIndex();
+    // The issue each one continues: the very comic it was made from or, if that one is gone, another copy of it.
+    const chain = [index.get(source.id)];
+    for (;;) {
+      const current = chain[0];
+      const candidates = [...index.values()].filter((entry) => current.series.parentOriginId
+        && entry.series.originId === current.series.parentOriginId && entry.completedPages >= 12 && !chain.includes(entry));
+      const previous = candidates.find((entry) => entry.id === current.fromId)
+        ?? candidates.find((entry) => entry.ownerToken === current.ownerToken)
+        ?? candidates.sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!previous) break;
+      chain.unshift(previous);
+    }
+    if (index.size + chain.length > MAX_STORIES) fail(503, 'Se alcanzó el límite de historias almacenadas.');
     const now = Date.now();
-    const story = structuredClone(source);
-    for (const key of ['readToken', 'sharing', 'subscriptions', 'notified', 'generation', 'invitationId', 'claimToken']) delete story[key];
-    story.id = randomUUID();
-    story.ownerToken = randomBytes(32).toString('base64url');
-    story.invitationId = null;
-    story.generation = { state: 'finished', at: now };
-    story.createdAt = now;
-    story.updatedAt = now;
-    if (claim) story.claimToken = randomBytes(32).toString('base64url');
-    await saveStory(story);
-    return story;
+    const ownerToken = randomBytes(32).toString('base64url');
+    const newIds = new Map(chain.map((entry) => [entry.id, randomUUID()]));
+    const copies = [];
+    try {
+      for (const [position, entry] of chain.entries()) {
+        const story = entry.id === source.id ? structuredClone(source) : await loadStory(entry.id);
+        for (const key of ['readToken', 'sharing', 'subscriptions', 'notified', 'generation', 'invitationId', 'claimToken']) delete story[key];
+        story.id = newIds.get(entry.id);
+        story.ownerToken = ownerToken;
+        story.invitationId = null;
+        story.series = { ...entry.series };
+        if (story.continuation && position > 0) story.continuation.fromId = newIds.get(chain[position - 1].id);
+        story.generation = { state: 'finished', at: now };
+        story.createdAt = now;
+        story.updatedAt = now;
+        if (claim && position === chain.length - 1) story.claimToken = randomBytes(32).toString('base64url');
+        await saveStory(story);
+        copies.push({ id: story.id, ownerToken, claimToken: story.claimToken });
+      }
+    } catch (error) {
+      for (const copy of copies) await rm(storyFilePath(copy.id), { force: true });
+      throw error;
+    }
+    return copies;
+  }
+
+  // Keys of the comics of a series that share this comic's owner key, first issue first. Call inside serialize().
+  async function ownedKeys(story) {
+    const index = await seriesIndex();
+    const seriesId = index.get(story.id).series.id;
+    return [...index.values()]
+      .filter((entry) => entry.series.id === seriesId && entry.ownerToken === story.ownerToken)
+      .sort((a, b) => a.series.issue - b.series.issue || a.createdAt - b.createdAt)
+      .map((entry) => ({ id: entry.id, ownerToken: entry.ownerToken }));
   }
 
   async function participantRole(request, story) {
@@ -888,11 +952,14 @@ export function createAppServer({
           }
           if (!isStoryFinished(continued.faces)) fail(409, 'La historia aún no ha terminado.');
         }
+        const previous = continued ? await seriesOf(continued) : null;
 
         const now = Date.now();
+        const storyId = randomUUID();
         const story = {
-          id: randomUUID(),
-          ownerToken: randomBytes(32).toString('base64url'),
+          id: storyId,
+          // The issues one person adds to a series share the owner key (and so the made-up owner name).
+          ownerToken: continued?.ownerToken ?? randomBytes(32).toString('base64url'),
           invitationId: invitation?.id ?? null,
           title: body.title,
           hostName: invitation?.hostName ?? body.hostName,
@@ -905,11 +972,14 @@ export function createAppServer({
           ...(continued ? {
             continuation: {
               fromId: continued.id,
-              issue: (continued.continuation?.issue ?? 1) + 1,
+              issue: previous.issue + 1,
               recap: body.continuation.recap,
               direction: body.continuation.direction,
             },
           } : {}),
+          series: previous
+            ? { id: previous.id, issue: previous.issue + 1, originId: storyId, parentOriginId: previous.originId }
+            : { id: storyId, issue: 1, originId: storyId, parentOriginId: null },
           faces: [],
           version: 0,
           createdAt: now,
@@ -961,6 +1031,7 @@ export function createAppServer({
           story.sharing = { ...story.sharing, opens: (story.sharing?.opens ?? 0) + 1, lastOpenedAt: Date.now() };
           await saveStory(story);
         }
+        const series = await seriesOf(story);
         return {
           id: story.id,
           title: story.title,
@@ -976,6 +1047,7 @@ export function createAppServer({
           totalPages: 12,
           completedPages: story.faces.filter((face) => face.imageUrl && !face.isLoading).length,
           continuation: story.continuation ?? null,
+          series: { id: series.id, issue: series.issue },
           role,
           generation: story.generation ?? null,
           // Lets the owner redo the comic with the same invited co-star.
@@ -1117,7 +1189,8 @@ export function createAppServer({
       return;
     }
 
-    // Exchanges the one-time token of a transfer link (made by the admin) for the owner key of that copy.
+    // Exchanges the one-time token of a transfer link (made by the admin) for the owner key of that copy
+    // and of the copies of the issues before it.
     if (segments.length === 4 && segments[3] === 'claim' && request.method === 'POST') {
       const body = await readJsonBody(request);
       if (!isObject(body) || !exactKeys(body, ['claim']) || typeof body.claim !== 'string') fail(400, 'El enlace no es válido.');
@@ -1129,14 +1202,15 @@ export function createAppServer({
         }
         delete story.claimToken;
         await saveStory(story);
-        return { id: story.id, ownerToken: story.ownerToken };
+        return { id: story.id, ownerToken: story.ownerToken, keys: await ownedKeys(story) };
       });
       sendJson(response, 200, key);
       return;
     }
 
-    // Gives whoever opened a finished comic (reader link or invited co-star) their own copy: same pages, photos and
-    // characters, but a new id and owner token, so they can continue, redo or delete it without touching the original.
+    // Gives whoever opened a finished comic (reader link or invited co-star) their own copy of it and of the issues
+    // before it: same pages, photos and characters, but new ids and a new owner token, so they can continue, redo or
+    // delete them without touching the originals. `keys` lists every copy, first issue first.
     if (segments.length === 4 && segments[3] === 'copy' && request.method === 'POST') {
       await readJsonBody(request).catch(() => null);
       const copy = await serialize(async () => {
@@ -1145,9 +1219,10 @@ export function createAppServer({
         const role = await participantRole(request, source);
         if (role === 'owner') fail(403, 'Esta historia ya es tuya.');
         if (!isStoryFinished(source.faces)) fail(409, 'La historia aún no ha terminado.');
-        return copyStoryRecord(source);
+        const copies = await copySeriesChain(source);
+        return { ...copies.at(-1), keys: copies.map(({ id: copyId, ownerToken }) => ({ id: copyId, ownerToken })) };
       });
-      sendJson(response, 201, { id: copy.id, ownerToken: copy.ownerToken, ownerAlias: ownerAlias(copy.ownerToken) });
+      sendJson(response, 201, { id: copy.id, ownerToken: copy.ownerToken, ownerAlias: ownerAlias(copy.ownerToken), keys: copy.keys });
       return;
     }
 

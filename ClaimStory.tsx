@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { claimStory, loadStoryKeys, saveStoryKeys } from './stories';
+import { claimStory, saveCopiedKeys } from './stories';
 import { errorMessage } from './invitations';
 import { t } from './i18n';
 
@@ -20,9 +20,7 @@ export function ClaimStory({ storyId, claim, onClaimed, onExit }: ClaimStoryProp
         claimStory(storyId, claim)
             .then(key => {
                 if (cancelled) return;
-                let keys: ReturnType<typeof loadStoryKeys> = [];
-                try { keys = loadStoryKeys(); } catch { /* start a new list */ }
-                saveStoryKeys([...keys.filter(item => item.id !== key.id), key]);
+                saveCopiedKeys(key);
                 onClaimed(key.id);
             })
             .catch(failure => { if (!cancelled) setError(errorMessage(failure)); });
