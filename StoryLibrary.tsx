@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { errorMessage } from './invitations';
 import { t } from './i18n';
 import { fetchStory, fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory, type StoryDocument, type StoryKey, type StoryMeta } from './stories';
+import { groupLibrary } from './seriesLogic';
 
 interface StoryLibraryProps {
     onOpen: (storyId: string) => void;
@@ -18,6 +19,8 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
     const [error, setError] = useState('');
     const [confirmId, setConfirmId] = useState<string | null>(null);
     const [redoingId, setRedoingId] = useState<string | null>(null);
+    // Series whose issues are listed.
+    const [openSeries, setOpenSeries] = useState<string[]>([]);
 
     useEffect(() => {
         try {
@@ -48,11 +51,29 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
         return () => controller.abort();
     }, [keys, onTitlesLoaded]);
 
-    const forget = (id: string) => {
-        const updated = keys.filter(key => key.id !== id);
+    const forget = (...ids: string[]) => {
+        const updated = keys.filter(key => !ids.includes(key.id));
         saveStoryKeys(updated);
         setKeys(updated);
         setConfirmId(null);
+    };
+
+    // Deletes every own comic of a series, last issue first, so a failure never leaves a gap in the middle.
+    const removeSeries = async (comics: StoryKey[]) => {
+        const gone: string[] = [];
+        try {
+            for (const key of [...comics].reverse()) {
+                try {
+                    await deleteStory(key.id, { kind: 'owner', token: key.ownerToken });
+                } catch (failure) {
+                    if ((failure as { status?: number }).status !== 404) throw failure;
+                }
+                gone.push(key.id);
+            }
+        } catch (failure) {
+            setError(t('library.deleteFailed', { reason: errorMessage(failure) }));
+        }
+        forget(...gone);
     };
 
     const remove = async (key: StoryKey) => {
@@ -92,32 +113,86 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
 
     if (!keys.length) return null;
 
+    const keyOf = new Map(keys.map(key => [key.id, key]));
+    const loadedComics = keys.flatMap(key => {
+        const meta = stories[key.id];
+        return meta && !('missing' in meta) ? [meta] : [];
+    });
+    const groups = groupLibrary(loadedComics);
+    const finished = (meta: StoryMeta) => meta.completedPages >= meta.totalPages;
+    const issueOf = (meta: StoryMeta) => meta.series?.issue ?? meta.continuation?.issue ?? 1;
+
+    const deleteButtons = (confirmKey: string, confirmLabel: string, label: string, onConfirm: () => void) => confirmId !== confirmKey
+        ? <button type="button" onClick={() => setConfirmId(confirmKey)} className="comic-btn bg-red-600 text-white px-3 py-2">{label}</button>
+        : <>
+            <button type="button" onClick={onConfirm} className="comic-btn bg-red-700 text-white px-3 py-2">{confirmLabel}</button>
+            <button type="button" onClick={() => setConfirmId(null)} className="comic-btn bg-gray-200 px-3 py-2">{t('common.cancel')}</button>
+        </>;
+
+    // One comic: on its own row, or as an issue inside its series (where only the last issue can be deleted alone).
+    const comicRow = (meta: StoryMeta, { inSeries = false, deletable = true } = {}) => {
+        const key = keyOf.get(meta.id)!;
+        return (
+            <li key={meta.id} className={`border-2 border-black p-2 flex flex-wrap items-center gap-2 ${inSeries ? 'bg-green-50' : 'bg-white'}`}>
+                <div className="flex-1 min-w-[12rem]">
+                    <p className="font-comic text-lg">{meta.title}{(inSeries || issueOf(meta) > 1) && <span className="text-xs font-sans ml-2 border border-black px-1">{t('library.issue', { issue: issueOf(meta) })}</span>}</p>
+                    <p className="text-xs text-gray-700">{t('library.pages', { done: meta.completedPages, total: meta.totalPages })} · {formatDate(meta.updatedAt)}{meta.guestName ? ` · ${t('library.with', { name: meta.guestName })}` : ''}{!inSeries && meta.ownerAlias ? ` · ${t('library.alias', { alias: meta.ownerAlias })}` : ''}</p>
+                </div>
+                <button type="button" onClick={() => onOpen(meta.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{finished(meta) ? t('common.read') : t('common.continue')}</button>
+                {!inSeries && finished(meta) && <button type="button" onClick={() => continueSeries(key)} disabled={redoingId !== null} className="comic-btn bg-red-600 text-white px-3 py-2">{redoingId === key.id ? t('common.loading') : t('continue.button')}</button>}
+                <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title={t('library.redoHint')} className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? t('common.loading') : t('library.redo')}</button>
+                {deletable && deleteButtons(meta.id, t('common.confirmDelete'), t('common.delete'), () => remove(key))}
+            </li>
+        );
+    };
+
     return (
         <section className="border-4 border-black bg-green-50 p-3 mb-4 text-left">
             <h2 className="font-comic text-2xl">{t('library.title')}</h2>
             <p className="text-sm mb-2">{t('library.hint')}</p>
             {error && <p role="alert" className="text-red-700 font-bold mb-2">{error}</p>}
             <ul className="flex flex-col gap-2">
-                {keys.map(key => {
-                    const meta = stories[key.id];
-                    const missing = !!meta && 'missing' in meta;
-                    const loaded = meta && !('missing' in meta) ? meta : null;
+                {groups.map(group => {
+                    if (group.comics.length === 1) return comicRow(group.comics[0]);
+                    const open = openSeries.includes(group.id);
+                    const lastKey = keyOf.get(group.last.id)!;
+                    const lastIssue = issueOf(group.last);
+                    const guests = [...new Set(group.comics.map(meta => meta.guestName).filter(Boolean))];
+                    const aliases = [...new Set(group.comics.flatMap(meta => meta.ownerAlias ? [meta.ownerAlias] : []))];
+                    const confirmKey = `series:${group.id}`;
+                    return (
+                        <li key={confirmKey} className="border-2 border-black bg-white p-2 flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex-1 min-w-[12rem]">
+                                    <p className="font-comic text-lg">{group.name}<span className="text-xs font-sans ml-2 border border-black bg-yellow-200 px-1">{t('library.seriesTag')}</span></p>
+                                    <p className="text-xs text-gray-700">{t('library.seriesSummary', { issues: group.issues, pages: group.pages })} · {formatDate(group.updatedAt)}{guests.length ? ` · ${t('library.with', { name: guests.join(', ') })}` : ''}{aliases.length ? ` · ${t('library.alias', { alias: aliases.join(', ') })}` : ''}</p>
+                                </div>
+                                <button type="button" onClick={() => onOpen(group.comics[0].id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('common.read')}</button>
+                                {finished(group.last)
+                                    ? <button type="button" onClick={() => continueSeries(lastKey)} disabled={redoingId !== null} className="comic-btn bg-red-600 text-white px-3 py-2">{redoingId === lastKey.id ? t('common.loading') : t('continue.button')}</button>
+                                    : <button type="button" onClick={() => onOpen(group.last.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('library.continueIssue', { issue: lastIssue })}</button>}
+                                <button type="button" onClick={() => setOpenSeries(open ? openSeries.filter(id => id !== group.id) : [...openSeries, group.id])} aria-expanded={open}
+                                  className="comic-btn bg-gray-200 px-3 py-2">{open ? t('library.hideIssues') : t('library.showIssues')} {open ? '▴' : '▾'}</button>
+                                {deleteButtons(confirmKey, t('library.confirmDeleteSeries', { count: group.comics.length }), t('library.deleteSeries'), () => removeSeries(group.comics.map(meta => keyOf.get(meta.id)!)))}
+                            </div>
+                            {open && <>
+                                <ul className="flex flex-col gap-2">
+                                    {group.comics.map(meta => comicRow(meta, { inSeries: true, deletable: issueOf(meta) === lastIssue }))}
+                                </ul>
+                                <p className="text-xs text-gray-700">{t('library.deleteHint')}</p>
+                            </>}
+                        </li>
+                    );
+                })}
+                {keys.filter(key => !stories[key.id] || 'missing' in stories[key.id]).map(key => {
+                    const missing = !!stories[key.id];
                     return (
                         <li key={key.id} className="border-2 border-black bg-white p-2 flex flex-wrap items-center gap-2">
                             <div className="flex-1 min-w-[12rem]">
-                                <p className="font-comic text-lg">{loaded?.title ?? (missing ? t('library.unavailable') : t('common.loading'))}{loaded?.continuation && <span className="text-xs font-sans ml-2 border border-black px-1">{t('library.issue', { issue: loaded.continuation.issue })}</span>}</p>
-                                {loaded && <p className="text-xs text-gray-700">{t('library.pages', { done: loaded.completedPages, total: loaded.totalPages })} · {formatDate(loaded.updatedAt)}{loaded.guestName ? ` · ${t('library.with', { name: loaded.guestName })}` : ''}{loaded.ownerAlias ? ` · ${t('library.alias', { alias: loaded.ownerAlias })}` : ''}</p>}
+                                <p className="font-comic text-lg">{missing ? t('library.unavailable') : t('common.loading')}</p>
                                 {missing && <p className="text-xs text-gray-700">{t('library.gone')}</p>}
                             </div>
-                            {loaded && <button type="button" onClick={() => onOpen(key.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{loaded.completedPages >= loaded.totalPages ? t('common.read') : t('common.continue')}</button>}
-                            {loaded && loaded.completedPages >= loaded.totalPages && <button type="button" onClick={() => continueSeries(key)} disabled={redoingId !== null} className="comic-btn bg-red-600 text-white px-3 py-2">{redoingId === key.id ? t('common.loading') : t('continue.button')}</button>}
-                            {loaded && <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title={t('library.redoHint')} className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? t('common.loading') : t('library.redo')}</button>}
                             {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn bg-gray-200 px-3 py-2">{t('library.forget')}</button>}
-                            {loaded && confirmId !== key.id && <button type="button" onClick={() => setConfirmId(key.id)} className="comic-btn bg-red-600 text-white px-3 py-2">{t('common.delete')}</button>}
-                            {loaded && confirmId === key.id && <>
-                                <button type="button" onClick={() => remove(key)} className="comic-btn bg-red-700 text-white px-3 py-2">{t('common.confirmDelete')}</button>
-                                <button type="button" onClick={() => setConfirmId(null)} className="comic-btn bg-gray-200 px-3 py-2">{t('common.cancel')}</button>
-                            </>}
                         </li>
                     );
                 })}

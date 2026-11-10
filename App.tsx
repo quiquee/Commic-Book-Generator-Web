@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { TONES, Persona } from './types';
 import { defaultComicLanguage, t } from './i18n';
 import { Setup } from './Setup';
@@ -65,6 +65,8 @@ const App: React.FC = () => {
 
   // Finished comic whose next issue is being planned from the library.
   const [continueSource, setContinueSource] = useState<{ story: StoryDocument; ownerToken: string } | null>(null);
+  // The issue of a series the reader just turned to, and whether they arrived at its end (reading backwards).
+  const [arrival, setArrival] = useState<{ story: string; atEnd: boolean } | null>(null);
 
   const loadSavedHero = useCallback(() => {
     try {
@@ -253,8 +255,23 @@ const App: React.FC = () => {
     if (route.join && route.token) return { kind: 'guest', invitationId: route.join, token: route.token };
     const token = findOwnerToken(route.story);
     if (token) return { kind: 'owner', token };
+    // Someone else's issue or branch of a series, read with the key of an own comic of that series.
+    const familyToken = route.via ? findOwnerToken(route.via) : null;
+    if (familyToken) return { kind: 'family', token: familyToken };
     return route.read ? { kind: 'reader', token: route.read } : null;
   })();
+  // The auth object is rebuilt on every render; the reader only needs a new one when the key changes.
+  const authKey = storyAuth ? `${storyAuth.kind}:${storyAuth.token}` : '';
+  const stableAuth = useMemo(() => storyAuth, [authKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Another issue of the series being read: with its own key if this browser has it, else with the key in use.
+  const openIssue = (storyId: string, { atEnd }: { atEnd: boolean }) => {
+    setArrival({ story: storyId, atEnd });
+    if (route.join && route.token) navigate({ join: route.join, token: route.token, story: storyId });
+    else if (findOwnerToken(storyId)) navigate({ story: storyId });
+    else if (storyAuth?.kind === 'reader') navigate({ story: storyId, read: storyAuth.token });
+    else navigate({ story: storyId, via: route.via ?? route.story });
+  };
 
   // A copy someone made of a shared comic joins their own list, then opens as theirs.
   const saveCopiedStory = (key: CopiedStory) => {
@@ -269,8 +286,9 @@ const App: React.FC = () => {
   let content: React.ReactNode;
   if (route.story && route.claim) {
     content = <ClaimStory key={route.claim} storyId={route.story} claim={route.claim} onClaimed={openClaimed} onExit={returnToMainMenu} />;
-  } else if (route.story && storyAuth) {
-    content = <StoryView key={`${route.story}:${storyAuth.kind}`} storyId={route.story} auth={storyAuth} onExit={returnToMainMenu} onCopied={saveCopiedStory} onMood={setStoryMood} />;
+  } else if (route.story && stableAuth) {
+    content = <StoryView key={`${route.story}:${authKey}`} storyId={route.story} auth={stableAuth} onExit={returnToMainMenu} onCopied={saveCopiedStory} onMood={setStoryMood}
+      onOpenIssue={openIssue} startAtEnd={arrival?.story === route.story && arrival.atEnd} />;
   } else if (route.story) {
     content = (
       <div className="bg-white border-4 border-black p-8 max-w-lg text-center">

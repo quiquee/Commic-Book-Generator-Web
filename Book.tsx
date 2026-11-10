@@ -20,6 +20,8 @@ interface BookProps {
     onShare?: () => void;
     onSaveCopy?: () => void;
     onContinue?: () => void;
+    onNextIssue?: () => void;
+    nextIssueLabel?: string;
     issue?: number;
     soundEffects?: string[];
     comicLanguage?: string;
@@ -44,10 +46,10 @@ export const Book: React.FC<BookProps> = (props) => {
               <div key={i} className={`paper ${i < props.currentSheetIndex ? 'flipped' : ''}`} style={{ zIndex: i < props.currentSheetIndex ? i : sheetsToRender.length - i }}
                    onClick={() => props.onSheetClick(i)}>
                   <div className="front">
-                      <Panel face={sheet.front} allFaces={props.comicFaces} onChoice={props.onChoice} onOpenBook={props.onOpenBook} onDownload={props.onDownload} onReset={props.onReset} onShare={props.onShare} onSaveCopy={props.onSaveCopy} onContinue={props.onContinue} issue={props.issue} soundEffects={props.soundEffects} comicLanguage={props.comicLanguage} />
+                      <Panel face={sheet.front} allFaces={props.comicFaces} onChoice={props.onChoice} onOpenBook={props.onOpenBook} onDownload={props.onDownload} onReset={props.onReset} onShare={props.onShare} onSaveCopy={props.onSaveCopy} onContinue={props.onContinue} onNextIssue={props.onNextIssue} nextIssueLabel={props.nextIssueLabel} issue={props.issue} soundEffects={props.soundEffects} comicLanguage={props.comicLanguage} />
                   </div>
                   <div className="back">
-                      <Panel face={sheet.back} allFaces={props.comicFaces} onChoice={props.onChoice} onOpenBook={props.onOpenBook} onDownload={props.onDownload} onReset={props.onReset} onShare={props.onShare} onSaveCopy={props.onSaveCopy} onContinue={props.onContinue} issue={props.issue} soundEffects={props.soundEffects} comicLanguage={props.comicLanguage} />
+                      <Panel face={sheet.back} allFaces={props.comicFaces} onChoice={props.onChoice} onOpenBook={props.onOpenBook} onDownload={props.onDownload} onReset={props.onReset} onShare={props.onShare} onSaveCopy={props.onSaveCopy} onContinue={props.onContinue} onNextIssue={props.onNextIssue} nextIssueLabel={props.nextIssueLabel} issue={props.issue} soundEffects={props.soundEffects} comicLanguage={props.comicLanguage} />
                   </div>
               </div>
           ))}

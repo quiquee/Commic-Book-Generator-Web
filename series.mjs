@@ -34,10 +34,18 @@ export function seriesEntry(record) {
     coverHash: typeof cover === 'string' && cover ? createHash('sha256').update(cover).digest('hex') : null,
     title: typeof record.title === 'string' ? record.title : '',
     ownerToken: typeof record.ownerToken === 'string' ? record.ownerToken : '',
+    // What else opens the comic: its reading link and the invitation of its co-star.
+    readToken: typeof record.readToken === 'string' ? record.readToken : null,
+    invitationId: typeof record.invitationId === 'string' ? record.invitationId : null,
     createdAt: Number.isFinite(record.createdAt) ? record.createdAt : 0,
     updatedAt: Number.isFinite(record.updatedAt) ? record.updatedAt : 0,
     completedPages: faces.filter((face) => face.imageUrl && !face.isLoading).length,
   };
+}
+
+// A series is called like its first issue, without the number ("Title #2" -> "Title").
+export function seriesTitle(title) {
+  return String(title ?? '').replace(/\s*#\d+$/, '').trim();
 }
 
 const oldestFirst = (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id);

@@ -4,14 +4,16 @@ import { addSiteLink } from './pdfBranding';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
 import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
-import { copyStory, createReadLink, fetchStory, fetchStoryDelta, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type CopiedStory, type StoryAuth, type StoryDocument } from './stories';
+import { copyStory, createReadLink, fetchSeries, fetchStoryDelta, findOwnerToken, keepStory, openStory, prefetchStory, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type CopiedStory, type StoryAuth, type StoryDocument } from './stories';
+import { seriesPosition, type SeriesNode, type SeriesTree } from './seriesLogic';
+import { SeriesChooser } from './SeriesChooser';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
 import { NotifyPrompt } from './NotifyPrompt';
 import { Credits } from './Credits';
 import { ContinueStory } from './ContinueStory';
 import { moodFor, type Mood } from './music';
-import { localizeText, t } from './i18n';
+import { localizeText, t, tFor } from './i18n';
 
 interface StoryViewProps {
     storyId: string;
@@ -21,11 +23,25 @@ interface StoryViewProps {
     onCopied?: (key: CopiedStory) => void;
     // Tells the music player which mood fits this comic (null when leaving it).
     onMood?: (mood: Mood | null) => void;
+    // Opens another issue of the series (at its back cover when the reader came to it turning pages backwards).
+    onOpenIssue?: (storyId: string, options: { atEnd: boolean }) => void;
+    // Open the comic at its back cover instead of its cover.
+    startAtEnd?: boolean;
 }
+
+// Sheets of paper in an issue: with all of them turned, the back cover is in view.
+const SHEETS = Math.floor(TOTAL_PAGES / 2) + 1;
+
+// The series of the comic read last, so the next issue shows its place in the series while it loads.
+let lastTree: SeriesTree | null = null;
+
+const holdsKey = (node: SeriesNode) => node.mine || node.stories.some(id => !!findOwnerToken(id));
+// An issue is read from the reader's own comic when they have one of it.
+const comicOf = (node: SeriesNode) => node.stories.find(id => !!findOwnerToken(id)) ?? node.storyId;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
-export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryViewProps) {
+export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue, startAtEnd }: StoryViewProps) {
     const [story, setStory] = useState<StoryDocument | null>(null);
     const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
     const [error, setError] = useState('');
@@ -38,10 +54,15 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
     const [saving, setSaving] = useState(false);
     const [continuing, setContinuing] = useState(false);
     const [statusHidden, setStatusHidden] = useState(false);
+    const [tree, setTree] = useState<SeriesTree | null>(() => lastTree?.nodes.some(node => node.stories.includes(storyId)) ? lastTree : null);
+    // Which issues the chooser offers: the ones that continue this issue, or the other versions of it.
+    const [choosing, setChoosing] = useState<'next' | 'versions' | null>(null);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
     const isOwner = auth.kind === 'owner';
+    // The server says what this key may do here: a link or a key of another comic of the series only reads.
+    const readOnly = story ? story.role === 'reader' || story.role === 'family' : auth.kind === 'reader' || auth.kind === 'family';
 
     const updateStory = useCallback((updater: (current: StoryDocument) => StoryDocument) => {
         if (!storyRef.current) return;
@@ -55,16 +76,29 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
 
     useEffect(() => {
         const controller = new AbortController();
-        fetchStory(storyId, auth, controller.signal)
+        openStory(storyId, auth, controller.signal)
             .then(document => {
+                if (controller.signal.aborted) return;
                 storyRef.current = document;
                 versionRef.current = document.version;
+                if (startAtEnd && isStoryFinished(document.faces)) setCurrentSheetIndex(SHEETS);
                 setStory(document);
                 setError('');
             })
             .catch(failure => { if (!controller.signal.aborted) setError(errorMessage(failure)); });
         return () => controller.abort();
-    }, [storyId, auth]);
+    }, [storyId, auth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // The other issues of the series; asked again at the back cover, where a new next issue matters.
+    const atBackCover = currentSheetIndex >= SHEETS;
+    useEffect(() => {
+        if (!story?.id) return;
+        const controller = new AbortController();
+        fetchSeries(storyId, auth, controller.signal)
+            .then(result => { lastTree = result; setTree(result); })
+            .catch(() => { /* the comic reads fine without its series */ });
+        return () => controller.abort();
+    }, [story?.id, storyId, auth, atBackCover]);
 
     // The genre and tone are known once the comic loads: the music follows them.
     const genre = story?.settings.genre;
@@ -158,7 +192,7 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
     const choose = async (pageIndex: number, choice: string) => {
         const face = story && findFace(story.faces, pageIndex);
         if (!face || face.resolvedChoice) return;
-        if (auth.kind === 'reader') { setNotice(t('view.readOnly')); return; }
+        if (readOnly) { setNotice(t('view.readOnly')); return; }
         applyFace({ ...face, resolvedChoice: choice });
         try {
             const result = await submitChoice(storyId, auth, face.id, choice);
@@ -220,6 +254,57 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
         }
     };
 
+    const position = tree ? seriesPosition(tree, storyId, holdsKey) : null;
+    const finished = !!story && isStoryFinished(story.faces);
+
+    // Another comic of the series opens with its own key when the reader has it, with this comic's key otherwise.
+    const authFor = useCallback((id: string): StoryAuth => {
+        const own = findOwnerToken(id);
+        if (own) return { kind: 'owner', token: own };
+        return auth.kind === 'owner' ? { kind: 'family', token: auth.token } : auth;
+    }, [auth]);
+
+    const openIssue = (node: SeriesNode, atEnd = false) => {
+        if (!onOpenIssue) return;
+        setChoosing(null);
+        if (comicOf(node) === storyId) return;
+        if (storyRef.current && isStoryFinished(storyRef.current.faces)) keepStory(auth, storyRef.current);
+        onOpenIssue(comicOf(node), { atEnd });
+    };
+    const nextIssue = () => {
+        if (!position?.next.length) return;
+        if (position.next.length > 1) setChoosing('next');
+        else openIssue(position.next[0]);
+    };
+
+    // Past the middle of an issue, its next one starts loading so the last page turns straight into it.
+    const upcoming = finished && currentSheetIndex >= 3 && position?.next.length ? comicOf(position.next[0]) : null;
+    useEffect(() => {
+        if (upcoming) prefetchStory(upcoming, authFor(upcoming));
+    }, [upcoming, authFor]);
+
+    // The arrow keys turn the pages and go on into the next or the previous issue.
+    const turnRef = useRef<(forward: boolean) => void>(() => {});
+    turnRef.current = (forward: boolean) => {
+        if (!story || editing || continuing || choosing || showCredits) return;
+        if (forward) {
+            if (currentSheetIndex < SHEETS) { if (findFace(story.faces, currentSheetIndex * 2 + 1)?.imageUrl) setCurrentSheetIndex(currentSheetIndex + 1); }
+            else nextIssue();
+        } else if (currentSheetIndex > 0) setCurrentSheetIndex(currentSheetIndex - 1);
+        else if (position?.previous) openIssue(position.previous, true);
+    };
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (event.altKey || event.ctrlKey || event.metaKey || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return;
+            if (event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+            // On narrow screens the open book is wider than the window and the arrows scroll across it.
+            if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) return;
+            turnRef.current(event.key === 'ArrowRight');
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const handleSheetClick = (index: number) => {
         if (!story) return;
         if (index === 0 && currentSheetIndex === 0) return;
@@ -249,6 +334,21 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
     return (
         <>
             <div className="fixed bottom-2 inset-x-0 z-[450] flex flex-col items-center gap-1 pointer-events-none px-4">
+                {story && position && (position.path.length > 1 || position.versions.length > 1) && (
+                    <nav aria-label={t('series.nav')} className="pointer-events-auto max-w-full flex items-center gap-2 sm:gap-3 font-comic text-sm sm:text-base text-white bg-black/80 px-2 py-1 border-2 border-yellow-400">
+                        <button type="button" disabled={!position.previous} onClick={() => position.previous && openIssue(position.previous)} aria-label={t('series.previous')}
+                          className="shrink-0 whitespace-nowrap px-2 bg-yellow-400 text-black border-2 border-black disabled:opacity-30">{'\u25C4'}{position.previous ? ` #${position.previous.issue}` : ''}</button>
+                        <span className="min-w-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
+                            <span>{tree!.title} · {t('series.position', { issue: position.node.issue, total: position.path[position.path.length - 1].issue })}
+                                {' · '}{t('series.page', { page: position.pagesBefore + Math.min(currentSheetIndex * 2 + 1, story.completedPages || 1), total: Math.max(position.pagesTotal, 1) })}</span>
+                            {story.role === 'family' && <span className="text-xs font-sans border border-white px-1">{t('series.notYours')}</span>}
+                            {position.versions.length > 1 && <button type="button" onClick={() => setChoosing('versions')}
+                              className="px-2 bg-white text-black border-2 border-black">{t('series.versions', { count: position.versions.length })}</button>}
+                        </span>
+                        <button type="button" disabled={!position.next.length} onClick={nextIssue} aria-label={t('series.next')}
+                          className="shrink-0 whitespace-nowrap px-2 bg-yellow-400 text-black border-2 border-black disabled:opacity-30">{position.next.length ? `#${position.next[0].issue} ` : ''}{'\u25BA'}</button>
+                    </nav>
+                )}
                 {story && !statusHidden && (
                     <p role="status" className="pointer-events-auto flex items-center gap-3 font-comic text-lg text-white bg-black/70 pl-3 pr-1 py-1 border-2 border-yellow-400">
                         <span>{story.title} · {statusText}</span>
@@ -275,15 +375,19 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
                 onOpenBook={() => setCurrentSheetIndex(1)}
                 onDownload={downloadPDF}
                 onReset={() => setShowCredits(true)}
-                onShare={shareLink}
-                onSaveCopy={!isOwner && onCopied && story && isStoryFinished(story.faces) ? saveCopy : undefined}
-                onContinue={isOwner && story && isStoryFinished(story.faces) ? () => setContinuing(true) : undefined}
-                issue={story.continuation?.issue}
+                onShare={isOwner || story.role === 'guest' || auth.kind === 'reader' ? shareLink : undefined}
+                onSaveCopy={!isOwner && onCopied && finished ? saveCopy : undefined}
+                onContinue={isOwner && finished ? () => setContinuing(true) : undefined}
+                onNextIssue={finished && onOpenIssue && position?.next.length ? nextIssue : undefined}
+                nextIssueLabel={!position?.next.length ? undefined : position.next.length > 1
+                    ? t('series.chooseNext', { issue: position.next[0].issue, count: position.next.length })
+                    : tFor(story.settings.language, 'panel.readIssue', { issue: position.next[0].issue })}
+                issue={story.series?.issue ?? story.continuation?.issue}
                 soundEffects={story.soundEffects}
                 comicLanguage={story.settings.language}
             />}
             {!story && !error && <p role="status" className="font-comic text-3xl text-white">{t('view.loading')}</p>}
-            {story && auth.kind !== 'reader' && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
+            {story && !readOnly && <NotifyPrompt storyId={storyId} auth={auth} active={inProgress} />}
             {editing && (
                 <div role="dialog" aria-modal="true" aria-labelledby="instructions-title" className="fixed inset-0 z-[700] bg-black/70 flex items-center justify-center p-4">
                     <form onSubmit={saveInstructions} className="bg-white border-4 border-black p-4 w-full max-w-lg flex flex-col gap-3">
@@ -299,6 +403,18 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood }: StoryView
                 </div>
             )}
             {continuing && story && auth.kind === 'owner' && <ContinueStory source={story} ownerToken={auth.token} existingTitles={[]} onCancel={() => setContinuing(false)} onCreated={() => setContinuing(false)} />}
+            {choosing && position && (
+                <SeriesChooser
+                    title={choosing === 'next' ? t('series.chooserNext', { issue: position.next[0]?.issue ?? position.node.issue + 1 }) : t('series.chooserVersions', { issue: position.node.issue })}
+                    nodes={choosing === 'next' ? position.next : position.versions}
+                    current={position.node}
+                    isMine={holdsKey}
+                    comicOf={comicOf}
+                    authFor={authFor}
+                    onPick={node => openIssue(node)}
+                    onClose={() => setChoosing(null)}
+                />
+            )}
             {showCredits && <Credits onDone={onExit} />}
         </>
     );

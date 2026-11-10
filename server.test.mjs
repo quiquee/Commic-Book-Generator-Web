@@ -758,6 +758,97 @@ test('comics made before series existed are placed by their continuation link an
   assert.deepEqual((await storyRecord(copied.payload.id)).series, { id: first.id, issue: 2, originId: second.id, parentOriginId: first.id });
 });
 
+test('whoever owns a comic of a series reads every branch of it; a link shows the branch of who shared it', async () => {
+  const invitation = await createJoinedInvitation();
+  const first = (await api('/api/stories', {
+    method: 'POST',
+    body: storyBody({ id: invitation.payload.id, ownerToken: invitation.payload.ownerToken, responseId: invitation.responseId }),
+  })).payload;
+  const owner = first.ownerToken;
+  await finishStory(first.id, owner, 1);
+  const second = await nextIssue(first.id, owner, 'Serie #2');
+  await finishStory(second.id, owner, 2);
+  const third = await nextIssue(second.id, owner, 'Serie #3');
+  await finishStory(third.id, owner, 3);
+  const link = (await api(`/api/stories/${first.id}/share`, { method: 'POST', token: owner, body: {} })).payload.token;
+
+  // Someone keeps a copy of #1 and #2 and continues it another way.
+  const copied = (await api(`/api/stories/${second.id}/copy`, { method: 'POST', token: link, body: {} })).payload;
+  const other = copied.ownerToken;
+  const bis = await nextIssue(copied.id, other, 'Serie #3 bis');
+  await finishStory(bis.id, other, 4);
+
+  // The owner sees the whole series: both #3, and no hint of who made the other one.
+  const tree = await api(`/api/stories/${first.id}/series`, { token: owner });
+  assert.equal(tree.response.status, 200);
+  assert.equal(tree.payload.id, first.id);
+  assert.equal(tree.payload.title, 'Una historia compartida');
+  assert.deepEqual(tree.payload.nodes.map((node) => [node.issue, node.storyId, node.parentOriginId, node.mine, node.completedPages]), [
+    [1, first.id, null, true, 12],
+    [2, second.id, first.id, true, 12],
+    [3, third.id, second.id, true, 12],
+    [3, bis.id, second.id, false, 12],
+  ]);
+  assert.deepEqual(tree.payload.nodes[0].stories, [first.id, copied.keys[0].id]);
+  assert.equal(tree.payload.nodes[3].direction, 'Rumbo de Serie #3 bis');
+  const text = JSON.stringify(tree.payload);
+  assert.ok(!text.includes(other) && !text.includes(owner) && !/alias|token/i.test(text));
+
+  // The copy owner's tree reads from their own copies.
+  const theirs = await api(`/api/stories/${bis.id}/series`, { token: other });
+  assert.deepEqual(theirs.payload.nodes.map((node) => [node.storyId, node.mine]), [
+    [copied.keys[0].id, true], [copied.id, true], [third.id, false], [bis.id, true],
+  ]);
+
+  // Each reads the other's #3, and nothing more than read (or keep a copy).
+  for (const [id, token] of [[bis.id, owner], [third.id, other]]) {
+    const read = await api(`/api/stories/${id}`, { token });
+    assert.equal(read.response.status, 200);
+    assert.equal(read.payload.role, 'family');
+    assert.equal(read.payload.faces.length, 12);
+    assert.equal(read.payload.ownerAlias, undefined);
+    assert.equal((await api(`/api/stories/${id}?after=${read.payload.version}`, { token })).payload.faces.length, 0);
+    assert.match((await api(`/api/stories/${id}/cover`, { token })).payload.imageUrl, /^data:image\/jpeg;base64,/);
+    assert.equal((await api(`/api/stories/${id}/share`, { method: 'POST', token, body: {} })).response.status, 403);
+    assert.equal((await api(`/api/stories/${id}`, { method: 'PATCH', token, body: { title: 'Mío' } })).response.status, 403);
+    assert.equal((await api(`/api/stories/${id}/generate`, { method: 'POST', token, body: {} })).response.status, 503);
+    assert.equal((await api(`/api/stories/${id}`, { method: 'DELETE', token })).response.status, 403);
+    const next = await api('/api/stories', { method: 'POST', body: { ...storyBody(), title: 'Ajeno #4', continuation: { fromId: id, token, recap: 'r', direction: 'd' } } });
+    assert.equal(next.response.status, 401);
+  }
+
+  // The reading link of #1 opens the sharer's issues, not the other branch nor the other person's copies.
+  const shared = await api(`/api/stories/${second.id}/series`, { token: link });
+  assert.deepEqual(shared.payload.nodes.map((node) => [node.storyId, node.stories, node.mine]), [
+    [first.id, [first.id], false], [second.id, [second.id], false], [third.id, [third.id], false],
+  ]);
+  const opensBefore = (await storyRecord(first.id)).sharing.opens ?? 0;
+  const viaLink = await api(`/api/stories/${third.id}`, { token: link });
+  assert.equal(viaLink.payload.role, 'reader');
+  assert.equal((await storyRecord(third.id)).sharing, undefined);
+  assert.equal((await storyRecord(first.id)).sharing.opens ?? 0, opensBefore);
+  assert.equal((await api(`/api/stories/${third.id}/share`, { method: 'POST', token: link, body: {} })).response.status, 403);
+  for (const id of [bis.id, copied.id, copied.keys[0].id]) {
+    assert.equal((await api(`/api/stories/${id}`, { token: link })).response.status, 401);
+    assert.equal((await api(`/api/stories/${id}/cover`, { token: link })).response.status, 401);
+  }
+
+  // The invited co-star of #1 follows the same branch, read-only beyond their own issue.
+  const guest = invitation.payload.guestToken;
+  assert.equal((await api(`/api/stories/${first.id}`, { token: guest })).payload.role, 'guest');
+  assert.equal((await api(`/api/stories/${third.id}`, { token: guest })).payload.role, 'reader');
+  assert.equal((await api(`/api/stories/${bis.id}`, { token: guest })).response.status, 401);
+  assert.equal((await api(`/api/stories/${first.id}/series`, { token: guest })).payload.nodes.length, 3);
+
+  // A key of another series, or none, opens nothing.
+  const stranger = (await api('/api/stories', { method: 'POST', body: { ...storyBody(), title: 'Otra cosa' } })).payload;
+  for (const path of ['', '/series', '/cover']) {
+    assert.equal((await api(`/api/stories/${bis.id}${path}`, { token: stranger.ownerToken })).response.status, 401);
+    assert.equal((await api(`/api/stories/${bis.id}${path}`)).response.status, 401);
+  }
+  assert.deepEqual((await api(`/api/stories/${stranger.id}/series`, { token: stranger.ownerToken })).payload.nodes.map((node) => node.storyId), [stranger.id]);
+});
+
 test('a reader gets their own copy of a finished comic, with photos and characters, and cannot touch the original', async () => {
   const source = await api('/api/stories', { method: 'POST', body: { ...storyBody(), friend: { base64: JPEG, desc: 'Amiga' } } });
   const owner = source.payload.ownerToken;

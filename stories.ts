@@ -1,12 +1,15 @@
 import type { ComicFace, Persona } from './types.ts';
 import { invitationRequest, type StorySettings } from './invitations.ts';
 import { intlLocale, t } from './i18n.ts';
+import type { SeriesTree } from './seriesLogic.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
     | { kind: 'guest'; invitationId: string; token: string }
     // Opened from a shared link: can read the comic and nothing else.
-    | { kind: 'reader'; token: string };
+    | { kind: 'reader'; token: string }
+    // Another issue or branch of a series, opened with the key of a comic of that series: read only.
+    | { kind: 'family'; token: string };
 
 export interface StoryKey {
     id: string;
@@ -48,7 +51,8 @@ export interface StoryMeta extends StorySummary {
     continuation?: { fromId: string; issue: number; recap: string; direction: string } | null;
     // The series this comic belongs to and its number in it (a comic on its own is issue 1 of its series).
     series?: { id: string; issue: number };
-    role: 'owner' | 'guest' | 'reader';
+    // 'family': the reader owns another comic of the same series, so they can read this one.
+    role: 'owner' | 'guest' | 'reader' | 'family';
     generation: GenerationStatus | null;
     // Only sent to the owner.
     invitationId?: string | null;
@@ -74,13 +78,15 @@ export interface AppRoute {
     read: string | null;
     // One-time token of a transfer link made by the admin: hands over a copy of a comic.
     claim: string | null;
+    // An own comic of the same series whose key opens `story` (an issue or a branch that belongs to someone else).
+    via: string | null;
 }
 
 export const storyStorageKey = 'infinite-heroes.stories';
 
 export function getRoute(): AppRoute {
     const params = new URLSearchParams(window.location.hash.slice(1));
-    return { story: params.get('story'), join: params.get('join'), token: params.get('token'), read: params.get('read'), claim: params.get('claim') };
+    return { story: params.get('story'), join: params.get('join'), token: params.get('token'), read: params.get('read'), claim: params.get('claim'), via: params.get('via') };
 }
 
 export function routeHash(route: Partial<AppRoute>): string {
@@ -90,6 +96,7 @@ export function routeHash(route: Partial<AppRoute>): string {
     if (route.read) params.set('read', route.read);
     if (route.claim) params.set('claim', route.claim);
     if (route.story) params.set('story', route.story);
+    if (route.story && route.via) params.set('via', route.via);
     const value = params.toString();
     return value ? `#${value}` : '';
 }
@@ -201,6 +208,55 @@ export function createStory(body: CreateStoryBody): Promise<StoryKey> {
 
 export function fetchStory(id: string, auth: StoryAuth, signal?: AbortSignal): Promise<StoryDocument> {
     return storyRequest<StoryDocument>(`/${id}`, auth, { signal });
+}
+
+// Comics kept in memory for a moment, so turning the last page of an issue opens the next one at once
+// (and going back does not load the previous one again). A comic is a few MB, so only a handful are kept.
+const storyCache = new Map<string, Promise<StoryDocument>>();
+const cacheKey = (id: string, auth: StoryAuth) => `${id}:${auth.token}`;
+
+function cacheStory(key: string, document: Promise<StoryDocument>): void {
+    storyCache.delete(key);
+    storyCache.set(key, document);
+    for (const oldest of storyCache.keys()) {
+        if (storyCache.size <= 3) break;
+        storyCache.delete(oldest);
+    }
+}
+
+// Starts loading a comic the reader is likely to open next.
+export function prefetchStory(id: string, auth: StoryAuth): void {
+    const key = cacheKey(id, auth);
+    if (storyCache.has(key)) return;
+    const loading = fetchStory(id, auth);
+    loading.catch(() => { if (storyCache.get(key) === loading) storyCache.delete(key); });
+    cacheStory(key, loading);
+}
+
+// Keeps a finished comic the reader is leaving for another issue.
+export function keepStory(auth: StoryAuth, document: StoryDocument): void {
+    cacheStory(cacheKey(document.id, auth), Promise.resolve(document));
+}
+
+// The comic from memory when it is there, from the server otherwise.
+export async function openStory(id: string, auth: StoryAuth, signal?: AbortSignal): Promise<StoryDocument> {
+    const key = cacheKey(id, auth);
+    const kept = storyCache.get(key);
+    storyCache.delete(key);
+    if (kept) {
+        try { return await kept; } catch { /* ask the server again */ }
+    }
+    return fetchStory(id, auth, signal);
+}
+
+// The issues of the series a comic belongs to, as far as this key may see them.
+export function fetchSeries(id: string, auth: StoryAuth, signal?: AbortSignal): Promise<SeriesTree> {
+    return storyRequest<SeriesTree>(`/${id}/series`, auth, { signal });
+}
+
+// Just the cover of a comic (null while it is not drawn yet).
+export function fetchCover(id: string, auth: StoryAuth, signal?: AbortSignal): Promise<string | null> {
+    return storyRequest<{ imageUrl: string | null }>(`/${id}/cover`, auth, { signal }).then(result => result.imageUrl);
 }
 
 export function fetchStoryDelta(id: string, auth: StoryAuth, after: number, signal?: AbortSignal): Promise<StoryDelta> {

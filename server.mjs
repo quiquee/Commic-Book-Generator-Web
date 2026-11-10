@@ -13,7 +13,7 @@ import { createStoryWorker } from './storyWorker.mjs';
 import { createPushService, validateSubscription } from './push.mjs';
 import { isStoryFinished, nextPageToGenerate } from './storyLogic.ts';
 import { ownerAlias } from './alias.ts';
-import { planSeries, seriesEntry } from './series.mjs';
+import { planSeries, seriesEntry, seriesTitle } from './series.mjs';
 import { translateServerText } from './locales/serverText.ts';
 
 const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
@@ -791,6 +791,39 @@ export function createAppServer({
     },
   });
 
+  // A comic and the issues before it, first issue first. The issue each one continues is the very comic it was made
+  // from or, if that one is gone, another copy of it.
+  function chainBefore(index, entry) {
+    const chain = [entry];
+    for (;;) {
+      const current = chain[0];
+      const candidates = [...index.values()].filter((item) => current.series.parentOriginId
+        && item.series.originId === current.series.parentOriginId && item.completedPages >= 12 && !chain.includes(item));
+      const previous = candidates.find((item) => item.id === current.fromId)
+        ?? candidates.find((item) => item.ownerToken === current.ownerToken)
+        ?? candidates.sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!previous) return chain;
+      chain.unshift(previous);
+    }
+  }
+
+  // What a link to one comic lets its holder read: that comic, the issues before it and the issues made from it
+  // (only whoever has the owner key of a comic can continue it, so those are the same person's).
+  function branchOf(index, entry) {
+    const ids = new Set(chainBefore(index, entry).map((item) => item.id));
+    const pending = [entry.id];
+    while (pending.length) {
+      const current = pending.pop();
+      for (const item of index.values()) {
+        if (item.fromId === current && !ids.has(item.id) && item.series.id === entry.series.id) {
+          ids.add(item.id);
+          pending.push(item.id);
+        }
+      }
+    }
+    return ids;
+  }
+
   // Own copy of a comic and of the issues before it (#1 up to this one): same pages, photos and characters, but new
   // ids and one new owner token for all of them. The copies stay in the series, at the same place as their
   // originals; nothing else ties them to these (tokens, invitation, subscribers, share statistics or worker state).
@@ -798,18 +831,7 @@ export function createAppServer({
   // `claim` makes the last copy hand over the owner token once, to whoever opens the transfer link.
   async function copySeriesChain(source, { claim = false } = {}) {
     const index = await seriesIndex();
-    // The issue each one continues: the very comic it was made from or, if that one is gone, another copy of it.
-    const chain = [index.get(source.id)];
-    for (;;) {
-      const current = chain[0];
-      const candidates = [...index.values()].filter((entry) => current.series.parentOriginId
-        && entry.series.originId === current.series.parentOriginId && entry.completedPages >= 12 && !chain.includes(entry));
-      const previous = candidates.find((entry) => entry.id === current.fromId)
-        ?? candidates.find((entry) => entry.ownerToken === current.ownerToken)
-        ?? candidates.sort((a, b) => a.createdAt - b.createdAt)[0];
-      if (!previous) break;
-      chain.unshift(previous);
-    }
+    const chain = chainBefore(index, index.get(source.id));
     if (index.size + chain.length > MAX_STORIES) fail(503, 'Se alcanzó el límite de historias almacenadas.');
     const now = Date.now();
     const ownerToken = randomBytes(32).toString('base64url');
@@ -848,25 +870,86 @@ export function createAppServer({
       .map((entry) => ({ id: entry.id, ownerToken: entry.ownerToken }));
   }
 
-  async function participantRole(request, story) {
+  // True when the token is the reading link of this comic or the key of its invited co-star.
+  async function opensByLink(token, entry) {
+    if (entry.readToken && tokenMatches(token, entry.readToken)) return true;
+    if (!entry.invitationId) return false;
+    try {
+      return tokenMatches(token, (await loadRecord(entry.invitationId)).guestToken);
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) return false;
+      throw error;
+    }
+  }
+
+  // Who is asking for this comic. Besides its own people (owner, invited co-star, holder of its reading link):
+  //   family  owns another comic of the same series (an issue or a copy): may read every branch of it.
+  //   reader  also whoever holds the reading link or the co-star key of another issue of the same branch.
+  // `own` is false for those two, who came through another comic of the series. Call inside serialize().
+  async function participant(request, story) {
     const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? '');
     if (!match) fail(401, 'No tienes autorización para esta historia.');
-    if (tokenMatches(match[1], story.ownerToken)) return 'owner';
+    const token = match[1];
+    if (tokenMatches(token, story.ownerToken)) return { role: 'owner', own: true, token };
     // Anyone holding the link from the back-cover Share button can read the comic, nothing else.
-    if (typeof story.readToken === 'string' && tokenMatches(match[1], story.readToken)) return 'reader';
-    if (story.invitationId) {
-      let invitation;
-      try {
-        invitation = await loadRecord(story.invitationId);
-      } catch (error) {
-        if (error instanceof HttpError && error.status === 404) {
-          fail(401, 'No tienes autorización para esta historia.');
-        }
-        throw error;
-      }
-      if (tokenMatches(match[1], invitation.guestToken)) return 'guest';
+    if (typeof story.readToken === 'string' && tokenMatches(token, story.readToken)) return { role: 'reader', own: true, token };
+    if (await opensByLink(token, { invitationId: story.invitationId })) return { role: 'guest', own: true, token };
+    const index = await seriesIndex();
+    const self = index.get(story.id);
+    const relatives = self ? [...index.values()].filter((entry) => entry.series.id === self.series.id && entry.id !== story.id) : [];
+    if (relatives.some((entry) => tokenMatches(token, entry.ownerToken))) return { role: 'family', own: false, token };
+    for (const entry of relatives) {
+      if (await opensByLink(token, entry) && branchOf(index, entry).has(story.id)) return { role: 'reader', own: false, token };
     }
     fail(401, 'No tienes autorización para esta historia.');
+  }
+
+  async function participantRole(request, story) {
+    return (await participant(request, story)).role;
+  }
+
+  // Readers and the family of a series can read a comic and keep a copy of it, nothing else.
+  const readOnly = (role) => role === 'reader' || role === 'family';
+
+  // The issues of a series as its reader may see them: one entry per issue or alternative issue (copies of an issue
+  // have the same pages, so they are one entry). No owner is named. Call inside serialize().
+  async function seriesTree(story, { role, token }) {
+    const index = await seriesIndex();
+    const self = index.get(story.id);
+    let comics = [...index.values()].filter((entry) => entry.series.id === self.series.id);
+    if (role !== 'owner' && role !== 'family') {
+      // A link shows the branch of whoever shared it, not what other people made of the series.
+      const allowed = new Set();
+      for (const entry of comics) {
+        if (await opensByLink(token, entry)) for (const id of branchOf(index, entry)) allowed.add(id);
+      }
+      comics = comics.filter((entry) => allowed.has(entry.id));
+    }
+    const nodes = new Map();
+    for (const entry of comics) {
+      if (!nodes.has(entry.series.originId)) nodes.set(entry.series.originId, []);
+      nodes.get(entry.series.originId).push(entry);
+    }
+    const list = [...nodes.entries()].map(([originId, entries]) => {
+      const mine = entries.filter((entry) => tokenMatches(token, entry.ownerToken));
+      entries.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+      // Read from the caller's own comic, the one that was asked for, the original, or the oldest copy.
+      const lead = mine[0] ?? entries.find((entry) => entry.id === story.id) ?? entries.find((entry) => entry.id === originId) ?? entries[0];
+      return {
+        originId,
+        parentOriginId: lead.series.parentOriginId,
+        issue: lead.series.issue,
+        storyId: lead.id,
+        stories: entries.map((entry) => entry.id),
+        title: lead.title,
+        direction: lead.direction,
+        completedPages: lead.completedPages,
+        totalPages: 12,
+        updatedAt: lead.updatedAt,
+        mine: mine.length > 0,
+      };
+    }).sort((a, b) => a.issue - b.issue || a.updatedAt - b.updatedAt || a.originId.localeCompare(b.originId));
+    return { id: self.series.id, title: seriesTitle(list[0].title), nodes: list };
   }
 
   async function linkedStories(invitation) {
@@ -1025,9 +1108,9 @@ export function createAppServer({
       const result = await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        const role = await participantRole(request, story);
-        // A reader loading the comic (not the updates the page polls for) counts as one open of the link.
-        if (role === 'reader' && !hasAfter) {
+        const { role, own } = await participant(request, story);
+        // A reader loading the comic (not the updates the page polls for) counts as one open of its link.
+        if (role === 'reader' && own && !hasAfter) {
           story.sharing = { ...story.sharing, opens: (story.sharing?.opens ?? 0) + 1, lastOpenedAt: Date.now() };
           await saveStory(story);
         }
@@ -1057,6 +1140,30 @@ export function createAppServer({
         };
       });
       sendJson(response, 200, result);
+      return;
+    }
+
+    // The issues of the series this comic belongs to, for reading them one after another and switching branch.
+    if (segments.length === 4 && segments[3] === 'series' && request.method === 'GET') {
+      const tree = await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        return seriesTree(story, await participant(request, story));
+      });
+      sendJson(response, 200, tree);
+      return;
+    }
+
+    // Just the cover, to show an issue without loading its pages.
+    if (segments.length === 4 && segments[3] === 'cover' && request.method === 'GET') {
+      const cover = await serialize(async () => {
+        await prepareStoryStorage();
+        const story = await loadStory(id);
+        await participant(request, story);
+        const face = story.faces.find((item) => item.id === 'cover');
+        return face?.imageUrl && !face.isLoading ? face.imageUrl : null;
+      });
+      sendJson(response, 200, { imageUrl: cover });
       return;
     }
 
@@ -1128,7 +1235,7 @@ export function createAppServer({
       const result = await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
+        if (readOnly(await participantRole(request, story))) fail(403, READ_ONLY);
         const face = story.faces.find((item) => item.id === body.faceId);
         if (!face) fail(404, 'No se encontró la página de la historia.');
         if (!face.isDecisionPage || !face.choices.includes(body.choice)) {
@@ -1178,7 +1285,7 @@ export function createAppServer({
       const token = await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
+        if (readOnly(await participantRole(request, story))) fail(403, READ_ONLY);
         if (typeof story.readToken !== 'string') story.readToken = randomBytes(32).toString('base64url');
         // Counted each time someone taps Share (the admin panel shows it next to the opens of the link).
         story.sharing = { ...story.sharing, shares: (story.sharing?.shares ?? 0) + 1, lastSharedAt: Date.now() };
@@ -1261,7 +1368,7 @@ export function createAppServer({
       await serialize(async () => {
         await prepareStoryStorage();
         const story = await loadStory(id);
-        if (await participantRole(request, story) === 'reader') fail(403, READ_ONLY);
+        if (readOnly(await participantRole(request, story))) fail(403, READ_ONLY);
         const others = (Array.isArray(story.subscriptions) ? story.subscriptions : [])
           .filter((entry) => entry.subscription.endpoint !== subscription.endpoint);
         story.subscriptions = [...others, { subscription, url: body.url, lang }].slice(-10);
