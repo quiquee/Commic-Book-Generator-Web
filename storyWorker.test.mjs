@@ -39,7 +39,7 @@ async function startUpstream() {
     }
     const part = req.url.includes('nano-banana') ? { inlineData: { mimeType: 'image/png', data: PNG } }
       : { text: JSON.stringify(prompt.includes('art director')
-        ? { hero_look: 'Red cape', costar_look: 'Blue scarf', world_style: 'Bold ink' }
+        ? { hero_look: 'Red cape', costar_look: 'Blue scarf', world_style: 'Bold ink', quest: 'Cross the valley', hero_heart: 'Wants to be believed', costar_heart: 'Ignored', bond: 'Misses her sister', inner_question: 'Will she ask for help?' }
         : { caption: 'Texto', scene: 'HERO walks', focus_char: 'hero', choices: ['Ir', 'Quedarse'] }) };
     res.end(JSON.stringify({ candidates: [{ content: { parts: [part] } }], usageMetadata: { totalTokenCount: 10 } }));
   });
@@ -119,6 +119,8 @@ test('the server draws a comic on its own, waits for the decision and notifies o
   const waiting = await until(read, (story) => story.generation?.state === 'waiting', 'decisión pendiente');
   assert.deepEqual(done(waiting), [0, 1, 2, 3]);
   assert.ok(waiting.styleGuide.includes('Red cape'));
+  // The quest and the inner life of the cast are kept after the look; without a co-star there is no co-star entry.
+  assert.match(waiting.styleGuide, /=== INNER LIFE ===\nQUEST: Cross the valley\nHERO: Wants to be believed\nBOND: Misses her sister\nINNER QUESTION: Will she ask for help\?$/);
   const page = waiting.faces.find((face) => face.pageIndex === 3);
   assert.deepEqual(page.choices, ['Ir', 'Quedarse']);
   assert.match(page.imageUrl, /^data:image\/jpeg;base64,\/9j\//);

@@ -122,3 +122,34 @@ export function cleanSoundEffects(raw: unknown): string[] {
     }
     return result.slice(0, 12);
 }
+
+// The character bible holds two parts: the look (for the artist) and, after this line, the story engine (for the writer):
+// the quest that keeps the plot moving and the inner life of the cast.
+export const INNER_LIFE_HEADING = '=== INNER LIFE ===';
+
+export function splitStyleGuide(guide: string | undefined): { look: string; innerLife: string } {
+    const text = guide ?? '';
+    const at = text.indexOf(INNER_LIFE_HEADING);
+    if (at < 0) return { look: text.trim(), innerLife: '' };
+    return { look: text.slice(0, at).trim(), innerLife: text.slice(at + INNER_LIFE_HEADING.length).trim() };
+}
+
+// Feelings offered as inspiration when the inner life of the cast is written, so comics do not all hinge on the same one.
+export const EMOTIONAL_SPARKS = [
+    'envy of someone they love', 'guilt over a small lie that grew', 'fear of being left behind', 'pride that refuses to ask for help',
+    'longing to be taken seriously', 'shame about where they come from', 'a debt of gratitude they resent', 'homesickness for a place that changed',
+    'jealousy they will not admit', 'feeling like an impostor', 'protectiveness that smothers', 'loyalty pulled in two directions',
+    'grief nobody talks about', 'the need to be admired', 'resentment over an old slight', 'fear of disappointing a parent',
+    'boredom with the life they chose', 'tenderness they hide behind jokes', 'doubt about a promise they made', 'wanting to be forgiven',
+    'fear of growing apart', 'restlessness for something new', 'being tired of always being the strong one', 'a secret wish to quit',
+    'nostalgia for who they used to be', 'dread of being ordinary', 'unspoken admiration', 'anger at themselves for staying silent',
+    'curiosity about what the other is hiding', 'wanting to cheer someone up without knowing how', 'admiring a courage they lack', 'worry for someone who says they are fine',
+    'wanting to understand a choice they would never make', 'gratitude they have never managed to say', 'noticing that a friend has changed', 'the urge to protect someone who did not ask',
+];
+
+export function pickSparks(count: number, random: () => number = Math.random): string[] {
+    const pool = [...EMOTIONAL_SPARKS];
+    const picked: string[] = [];
+    while (picked.length < count && pool.length) picked.push(pool.splice(Math.floor(random() * pool.length), 1)[0]);
+    return picked;
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ComicFace } from './types.ts';
-import { isUnlocked, cleanSoundEffects, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun, sceneStartImage } from './storyLogic.ts';
+import { isUnlocked, cleanSoundEffects, mergeFaces, nextPageToGenerate, pendingDecision, previousImage, isStoryFinished, mustChangeScene, sceneRun, sceneStartImage, splitStyleGuide, pickSparks, EMOTIONAL_SPARKS, INNER_LIFE_HEADING } from './storyLogic.ts';
 
 const done = (pageIndex: number, extra: Partial<ComicFace> = {}): ComicFace => ({
     id: pageIndex === 0 ? 'cover' : `page-${pageIndex}`,
@@ -85,4 +85,16 @@ test('cleanSoundEffects drops stock and repeated words and caps the list', () =>
   assert.deepEqual(result, ['¡BROT!', '¡FSSS!']);
   assert.equal(cleanSoundEffects(Array.from({ length: 30 }, (_, i) => `¡X${i}!`)).length, 12);
   assert.deepEqual(cleanSoundEffects('¡A!|¡B!'), ['¡A!', '¡B!']);
+});
+
+test('splitStyleGuide separates the look from the inner life, and copes with guides that have none', () => {
+  assert.deepEqual(splitStyleGuide(`HERO LOOK: Red cape\n${INNER_LIFE_HEADING}\nHERO: wants to be believed`), { look: 'HERO LOOK: Red cape', innerLife: 'HERO: wants to be believed' });
+  assert.deepEqual(splitStyleGuide('HERO LOOK: Red cape'), { look: 'HERO LOOK: Red cape', innerLife: '' });
+  assert.deepEqual(splitStyleGuide(undefined), { look: '', innerLife: '' });
+});
+
+test('pickSparks returns distinct feelings from the list', () => {
+  const picked = pickSparks(3, () => 0);
+  assert.deepEqual(picked, EMOTIONAL_SPARKS.slice(0, 3));
+  assert.equal(new Set(pickSparks(EMOTIONAL_SPARKS.length + 5)).size, EMOTIONAL_SPARKS.length);
 });
