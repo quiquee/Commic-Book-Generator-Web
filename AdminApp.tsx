@@ -2,15 +2,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AdminAuthError, adminRequest, errorText } from './adminApi';
 import { AdminGeminiLog } from './AdminGeminiLog';
 import { AdminOverviewView } from './AdminOverview';
+import { AdminSeriesDetailView, AdminSeriesList } from './AdminSeries';
 import { AdminStories } from './AdminStories';
 import { AdminStoryDetailView } from './AdminStoryDetail';
 import { t } from './i18n';
 
-type View = { name: 'overview' } | { name: 'stories' } | { name: 'log' } | { name: 'story'; id: string };
+type View = { name: 'overview' } | { name: 'series' } | { name: 'stories' } | { name: 'log' } | { name: 'story'; id: string } | { name: 'seriesPage'; id: string };
 
 function parseHash(): View {
     const hash = window.location.hash.replace(/^#\/?/, '');
     if (hash.startsWith('story/')) return { name: 'story', id: decodeURIComponent(hash.slice(6)) };
+    if (hash.startsWith('series/')) return { name: 'seriesPage', id: decodeURIComponent(hash.slice(7)) };
+    if (hash === 'series') return { name: 'series' };
     if (hash === 'log') return { name: 'log' };
     if (hash === 'stories') return { name: 'stories' };
     return { name: 'overview' };
@@ -82,7 +85,7 @@ export function AdminApp() {
     if (disabled) return <main className="login"><div className="card"><h1>{t('admin.disabled')}</h1><p>{t('admin.disabledHint')}</p></div></main>;
     if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
 
-    const active = view.name === 'story' ? 'stories' : view.name;
+    const active = view.name === 'story' ? 'stories' : view.name === 'seriesPage' ? 'series' : view.name;
 
     return (
         <>
@@ -90,6 +93,7 @@ export function AdminApp() {
                 <strong>Mundos Cruzados · {t('admin.title')}</strong>
                 <nav aria-label={t('admin.nav')}>
                     <a href="#/" aria-current={active === 'overview' ? 'page' : undefined}>{t('admin.overview')}</a>
+                    <a href="#/series" aria-current={active === 'series' ? 'page' : undefined}>{t('admin.series')}</a>
                     <a href="#/stories" aria-current={active === 'stories' ? 'page' : undefined}>{t('admin.comics')}</a>
                     <a href="#/log" aria-current={active === 'log' ? 'page' : undefined}>{t('admin.geminiLog')}</a>
                 </nav>
@@ -97,6 +101,8 @@ export function AdminApp() {
             </header>
             <main className="content">
                 {view.name === 'overview' && <AdminOverviewView onAuthLost={onAuthLost} />}
+                {view.name === 'series' && <AdminSeriesList onAuthLost={onAuthLost} />}
+                {view.name === 'seriesPage' && <AdminSeriesDetailView key={view.id} id={view.id} onAuthLost={onAuthLost} />}
                 {view.name === 'stories' && <AdminStories onAuthLost={onAuthLost} />}
                 {view.name === 'log' && <AdminGeminiLog onAuthLost={onAuthLost} />}
                 {view.name === 'story' && <AdminStoryDetailView key={view.id} id={view.id} onAuthLost={onAuthLost} />}

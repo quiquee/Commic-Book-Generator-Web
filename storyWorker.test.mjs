@@ -252,6 +252,6 @@ test('the admin sees how many times a comic was shared and how many times the sh
   assert.ok(detail.lastSharedAt > 0 && detail.lastOpenedAt > 0);
   assert.ok(!JSON.stringify(detail).includes(reader));
   const csv = await (await fetch(`${base}/api/admin/usage.csv`, { headers })).text();
-  assert.match(csv.split('\r\n')[0], /,shares,opens$/);
-  assert.match(csv.split('\r\n').find((line) => line.includes(id)), /,"2","2"$/);
+  assert.match(csv.split('\r\n')[0], /,shares,opens,seriesId,issue$/);
+  assert.ok(csv.split('\r\n').find((line) => line.startsWith(`"${id}"`)).endsWith(`,"2","2","${id}","1"`));
 });

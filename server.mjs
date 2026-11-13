@@ -754,6 +754,7 @@ export function createAppServer({
 
   const admin = createAdminHandler({
     adminPassword, trustProxy, auditFile, usage, geminiLog, listActiveStories, getStory: getStoryOrNull,
+    listSeries: () => serialize(async () => [...(await seriesIndex()).values()]),
     resumeStory: (id) => worker?.start(id),
     deleteStoryById: (id, deletedBy) => serialize(() => deleteStoryById(id, deletedBy)),
     transferCopy: (id) => serialize(async () => {

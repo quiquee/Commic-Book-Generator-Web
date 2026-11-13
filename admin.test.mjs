@@ -278,7 +278,7 @@ test('CSV has BOM, exact columns, quoting, and neutralizes formula cells', async
   const bytes = Buffer.from(await response.arrayBuffer());
   assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
   const text = bytes.toString('utf8');
-  assert.equal(text.split('\r\n')[0], '\ufeffid,title,host,guest,status,createdAt,deletedAt,calls,errors,inputText,inputImage,outputText,outputImage,cached,totalTokens,costUsd,shares,opens');
+  assert.equal(text.split('\r\n')[0], '\ufeffid,title,host,guest,status,createdAt,deletedAt,calls,errors,inputText,inputImage,outputText,outputImage,cached,totalTokens,costUsd,shares,opens,seriesId,issue');
   assert.ok(text.includes(`"'=SUM(1,2)"`));
   assert.ok(text.includes(`"'+Host"`));
   assert.ok(text.includes(`"'@Guest"`));
@@ -343,7 +343,7 @@ test('continuing a comic hands its owner key only to a logged-in admin request a
 
 test('any /admin/... address lands on the panel, and a disabled panel answers with a page, not a download', async (t) => {
   const { request } = await fixture(t);
-  for (const [path, target] of [['/admin/', '/admin'], ['/admin/comics', '/admin#/stories'], ['/admin/log/', '/admin#/log'], ['/admin/anything/else', '/admin']]) {
+  for (const [path, target] of [['/admin/', '/admin'], ['/admin/comics', '/admin#/stories'], ['/admin/series', '/admin#/series'], ['/admin/log/', '/admin#/log'], ['/admin/anything/else', '/admin']]) {
     const response = await request(path);
     assert.equal(response.status, 302, path);
     assert.equal(response.headers.get('location'), target, path);
@@ -359,4 +359,98 @@ test('any /admin/... address lands on the panel, and a disabled panel answers wi
   assert.match(await html.text(), /deshabilitado/);
   const api = await disabled.request('/api/admin/session');
   assert.match(api.headers.get('content-type'), /^application\/json/);
+});
+
+test('series group the comics: issues, alternative versions, copies, owners, pages and cost', async (t) => {
+  const { request, login, active, accounting, directory } = await fixture(t);
+  const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const add = (n, title, ownerToken, series, { pages = 12, direction } = {}) => {
+    active.set(uuid(n), { id: uuid(n), title, hostName: 'Lucía', guestName: '', createdAt: 1000 + n, updatedAt: 2000 + n,
+      ownerToken, hero: { base64 }, friend: null, faces: Array.from({ length: pages }, (_, index) => face(index)),
+      series: { id: uuid(1), ...series }, ...(direction ? { continuation: { fromId: uuid(2), issue: 3, recap: 'Antes', direction } } : {}) });
+    accounting.set(uuid(n), { totals: totals(n), byOperation: {}, byModel: {}, events: [], snapshot: null });
+  };
+  add(1, 'El faro', 'OWNER_A', { issue: 1, originId: uuid(1), parentOriginId: null });
+  add(2, 'El faro #2', 'OWNER_A', { issue: 2, originId: uuid(2), parentOriginId: uuid(1) });
+  add(3, 'El faro #3', 'OWNER_A', { issue: 3, originId: uuid(3), parentOriginId: uuid(2) }, { pages: 5, direction: 'Vuelven al faro' });
+  add(4, 'El faro', 'OWNER_B', { issue: 1, originId: uuid(1), parentOriginId: null });
+  add(5, 'El faro #2', 'OWNER_B', { issue: 2, originId: uuid(2), parentOriginId: uuid(1) });
+  add(6, 'El faro #3: la tormenta', 'OWNER_B', { issue: 3, originId: uuid(6), parentOriginId: uuid(2) }, { direction: 'Se van en barco' });
+  const { cookie } = await login();
+  const headers = { Cookie: cookie };
+  const get = async (path, status = 200) => {
+    const response = await request('/api/admin' + path, { headers });
+    assert.equal(response.status, status, path);
+    return response.json();
+  };
+
+  const list = await get('/series?sort=cost&order=desc');
+  assert.equal(list.total, 3);
+  const [faro] = list.items;
+  assert.deepEqual([faro.id, faro.title, faro.issues, faro.versions, faro.comics, faro.pages, faro.complete, faro.coverId],
+    [uuid(1), 'El faro', 3, 1, 6, 41, 5, uuid(1)]);
+  assert.equal(faro.owners.length, 2);
+  assert.deepEqual(faro.cast, ['Lucía']);
+  assert.equal(faro.usage.costUsd, 21);
+  assert.equal(faro.usage.tokens.total, 600);
+  assert.deepEqual([faro.createdAt, faro.updatedAt], [1001, 2006]);
+  assert.equal(faro.nodes, undefined);
+  // A comic without series data is a series of one.
+  assert.deepEqual(list.items.slice(1).map((item) => [item.id, item.issues, item.comics]), [['complete', 1, 1], ['active', 1, 1]]);
+  assert.deepEqual((await get('/series?query=tormenta')).items.map((item) => item.id), [uuid(1)]);
+  assert.deepEqual((await get(`/series?query=${encodeURIComponent(faro.owners[1])}`)).items.map((item) => item.id), [uuid(1)]);
+  assert.deepEqual((await get('/series?sort=title&order=asc&pageSize=1&page=2')).items.map((item) => item.id), ['active']);
+  for (const query of ['?status=all', '?sort=pages', '?page=0', '?foo=1']) await get('/series' + query, 400);
+
+  const page = await get('/series/' + uuid(1));
+  assert.deepEqual(page.nodes.map((node) => [node.issue, node.depth, node.originId, node.comics.map((comic) => comic.id)]), [
+    [1, 0, uuid(1), [uuid(1), uuid(4)]],
+    [2, 1, uuid(2), [uuid(2), uuid(5)]],
+    [3, 2, uuid(3), [uuid(3)]],
+    [3, 2, uuid(6), [uuid(6)]],
+  ]);
+  assert.deepEqual(page.nodes.map((node) => node.direction), ['', '', 'Vuelven al faro', 'Se van en barco']);
+  assert.deepEqual(page.nodes[0].comics.map((comic) => [comic.original, comic.ownerAlias === faro.owners[0], comic.usage.costUsd]), [[true, true, 1], [false, false, 4]]);
+  assert.equal(page.nodes[2].comics[0].status, 'in_progress');
+  assert.doesNotMatch(JSON.stringify([list, page]), /OWNER_A|OWNER_B|base64|imageUrl/);
+  await get('/series/nope', 404);
+  assert.equal((await request('/api/admin/series')).status, 401);
+
+  // A comic knows the issue before it, the ones after it and its copies; its owner's comics are preferred.
+  const second = (await get('/stories/' + uuid(5))).series;
+  assert.deepEqual([second.id, second.title, second.issue, second.issues, second.comics], [uuid(1), 'El faro', 2, 3, 6]);
+  assert.equal(second.previous.id, uuid(4));
+  assert.deepEqual(second.next.map((comic) => [comic.id, comic.issue, comic.completedPages]), [[uuid(3), 3, 5], [uuid(6), 3, 12]]);
+  assert.deepEqual(second.copies.map((comic) => comic.id), [uuid(2)]);
+  assert.equal(second.copies[0].ownerAlias, faro.owners[0]);
+  const lone = (await get('/stories/active')).series;
+  assert.deepEqual([lone.id, lone.issue, lone.comics, lone.previous, lone.next, lone.copies], ['active', 1, 1, null, [], []]);
+  assert.equal((await get('/stories/deleted')).series, undefined);
+
+  const flat = await get('/stories?query=tormenta');
+  assert.deepEqual(flat.items[0].series, { id: uuid(1), issue: 3, originId: uuid(6), parentOriginId: uuid(2), comics: 6 });
+  assert.equal((await get('/stories?status=deleted')).items[0].series, undefined);
+  const csv = await (await request('/api/admin/usage.csv', { headers })).text();
+  assert.ok(csv.includes(`"0","0","${uuid(1)}","3"`));
+  const audit = (await readFile(join(directory, 'private', 'audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(audit.filter((entry) => entry.action === 'series_view').length, 1);
+});
+
+test('the application can pass its own series index, which also places comics without stored data', async (t) => {
+  const { request, login, active } = await fixture(t, {
+    listSeries: () => [
+      { id: 'active', title: 'Árbol de héroes', ownerToken: 'OWNER_SECRET', createdAt: 100, completedPages: 2,
+        series: { id: 'active', issue: 1, originId: 'active', parentOriginId: null } },
+      { id: 'complete', title: '=SUM(1,2)', ownerToken: '', createdAt: 200, completedPages: 12,
+        series: { id: 'active', issue: 2, originId: 'complete', parentOriginId: 'active' } },
+    ],
+  });
+  assert.equal(active.size, 2);
+  const { cookie } = await login();
+  const headers = { Cookie: cookie };
+  const list = await (await request('/api/admin/series', { headers })).json();
+  assert.deepEqual(list.items.map((item) => [item.id, item.issues, item.comics, item.pages]), [['active', 2, 2, 14]]);
+  const detail = await (await request('/api/admin/stories/complete', { headers })).json();
+  assert.equal(detail.series.previous.id, 'active');
+  assert.equal(detail.series.copies.length, 0);
 });

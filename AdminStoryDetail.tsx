@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import { addSiteLink } from './pdfBranding';
 import {
     AdminAuthError, adminRequest, errorText, formatCost, formatDate, formatNumber, formatUsd, imageUrl, statusLabel,
-    type AdminFace, type AdminStoryDetail, type UsageTotals
+    type AdminFace, type AdminSeriesLink, type AdminStoryDetail, type UsageTotals
 } from './adminApi';
 import { genreLabel } from './Setup';
 import { t } from './i18n';
@@ -30,6 +30,16 @@ function UsageTable({ title, rows }: { title: string; rows: Record<string, Usage
                 {!entries.length && <tr><td colSpan={6} className="muted">{t('admin.noData')}</td></tr>}
             </tbody>
         </table>
+    );
+}
+
+// Another comic of the same series: its title, who holds it and how far it got.
+function SeriesLink({ comic }: { comic: AdminSeriesLink }) {
+    return (
+        <>
+            <a href={`#/story/${encodeURIComponent(comic.id)}`}>#{comic.issue} · {comic.title}</a>
+            <span className="muted small"> · {comic.ownerAlias ? `${comic.ownerAlias} · ` : ''}{t('library.pages', { done: comic.completedPages, total: 12 })}</span>
+        </>
     );
 }
 
@@ -160,6 +170,25 @@ export function AdminStoryDetailView({ id, onAuthLost }: { id: string; onAuthLos
                     {story.tone && <><dt>{t('admin.tone')}</dt><dd>{story.tone}</dd></>}
                 </dl>
             </section>
+
+            {story.series && story.series.comics > 1 && (
+                <section className="card" aria-label={t('admin.series')}>
+                    <h2>{t('admin.series')}: <a href={`#/series/${encodeURIComponent(story.series.id)}`}>{story.series.title}</a></h2>
+                    <dl className="places">
+                        <dt>{t('admin.place')}</dt>
+                        <dd>{t('series.position', { issue: story.series.issue, total: story.series.issues })}</dd>
+                        <dt>{t('series.previous')}</dt>
+                        <dd>{story.series.previous ? <SeriesLink comic={story.series.previous} /> : <span className="muted">—</span>}</dd>
+                        <dt>{t('series.next')}</dt>
+                        <dd>
+                            {story.series.next.length ? story.series.next.map(comic => <div key={comic.id}><SeriesLink comic={comic} /></div>) : <span className="muted">—</span>}
+                            {story.series.next.length > 1 && <div className="muted small">{t('admin.nextHint')}</div>}
+                        </dd>
+                        <dt>{t('admin.copies')}</dt>
+                        <dd>{story.series.copies.length ? story.series.copies.map(comic => <div key={comic.id}><SeriesLink comic={comic} /></div>) : <span className="muted">—</span>}</dd>
+                    </dl>
+                </section>
+            )}
 
             <section className="card" aria-label={t('admin.usage')}>
                 <h2>{t('admin.usageEstimated')}</h2>

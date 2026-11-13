@@ -99,6 +99,9 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                                         <td>
                                             <a href={`#/story/${item.id}`}><strong>{item.title}</strong></a>
                                             <div className="muted small">{item.guestName ? t('pdf.castPair', { host: item.hostName, guest: item.guestName }) : item.hostName}{item.ownerAlias ? ` · ${item.ownerAlias}` : ''}</div>
+                                            {item.series && item.series.comics > 1 && (
+                                                <div className="small"><a href={`#/series/${encodeURIComponent(item.series.id)}`}>{t('admin.inSeries', { issue: item.series.issue, comics: item.series.comics })}</a></div>
+                                            )}
                                         </td>
                                         <td><span className={`badge ${item.status}`}>{statusLabel(item.status)}</span></td>
                                         <td>{item.completedPages}/{item.totalPages}</td>
@@ -111,7 +114,7 @@ export function AdminStories({ onAuthLost }: { onAuthLost: () => void }) {
                                     </tr>
                                 );
                             })}
-                            {!data.items.length && <tr><td colSpan={8} className="muted">{t('admin.noMatches')}</td></tr>}
+                            {!data.items.length && <tr><td colSpan={10} className="muted">{t('admin.noMatches')}</td></tr>}
                         </tbody>
                     </table>
                 </div>

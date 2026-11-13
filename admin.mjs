@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { appendFile, chmod, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { ownerAlias } from './alias.ts';
+import { groupSeries, seriesEntry, seriesTitle } from './series.mjs';
 
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -12,6 +13,13 @@ const emptyTotals = () => ({
   calls: 0, errors: 0, costUsd: 0, uncostedCalls: 0,
   tokens: { inputText: 0, inputImage: 0, outputText: 0, outputImage: 0, cached: 0, total: 0 },
 });
+const addTotals = (sum, totals) => {
+  for (const key of ['calls', 'errors', 'costUsd', 'uncostedCalls']) sum[key] += totals?.[key] ?? 0;
+  for (const key of Object.keys(sum.tokens)) sum.tokens[key] += totals?.tokens?.[key] ?? 0;
+  return sum;
+};
+const alone = (id) => ({ id, issue: 1, originId: id, parentOriginId: null });
+const oldestFirst = (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || String(a.id).localeCompare(String(b.id));
 const fold = (text) => String(text ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 const hash = (text) => createHash('sha256').update(text).digest();
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
@@ -23,6 +31,12 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
 export function createAdminHandler({
   adminPassword, trustProxy = false, auditFile, usage, geminiLog, listActiveStories, getStory,
   deleteStoryById, transferCopy = async () => null, dailyBudgetUsd = 0, dailyTokenLimit = 0, dev = false, serveAdminPage, resumeStory = () => {},
+  // The series data of every active comic: series.mjs entries, each with its `series`. The application passes its
+  // index, which also places comics made before series existed; without it only the stored data counts.
+  listSeries = async () => (await listActiveStories()).map((record) => {
+    const entry = seriesEntry(record);
+    return { ...entry, series: entry.stored ?? alone(record.id) };
+  }),
 }) {
   const secret = randomBytes(32);
   const passwordHash = hash(adminPassword || '');
@@ -59,7 +73,7 @@ export function createAdminHandler({
     auditQueue = result.catch(() => {});
     return result;
   }
-  function item(record, totals, deleted = false) {
+  function item(record, totals, deleted = false, series = null) {
     const completedPages = deleted ? (record.completedPages ?? 0)
       : (record.faces ?? []).filter((face) => face.imageUrl && !face.isLoading).length;
     return {
@@ -70,17 +84,74 @@ export function createAdminHandler({
       hasFriend: record.hasFriend ?? !!record.friend, usage: totals ?? emptyTotals(),
       shares: record.sharing?.shares ?? 0, opens: record.sharing?.opens ?? 0,
       ...pick(record.sharing, ['lastSharedAt', 'lastOpenedAt']),
+      ...(deleted ? {} : { hasCover: (record.faces ?? []).some((face) => face.id === 'cover' && !!face.imageUrl) }),
+      ...(typeof record.continuation?.direction === 'string' && record.continuation.direction ? { direction: record.continuation.direction } : {}),
+      ...(series ? { series: { ...series } } : {}),
     };
   }
+  // Every comic: the active ones with their place in a series, then the deleted ones kept for the accounts.
   async function allStories() {
-    const [active, stored] = await Promise.all([listActiveStories(), usage.listStories()]);
+    const [active, stored, entries] = await Promise.all([listActiveStories(), usage.listStories(), listSeries()]);
     const accounting = new Map(stored.map((entry) => [entry.id, entry]));
+    const planned = new Map(entries.map((entry) => [entry.id, entry.series]));
     const ids = new Set(active.map((record) => record.id));
+    const items = active.map((record) => item(record, accounting.get(record.id)?.totals, false, planned.get(record.id) ?? alone(record.id)));
+    const sizes = new Map();
+    for (const entry of items) sizes.set(entry.series.id, (sizes.get(entry.series.id) ?? 0) + 1);
+    for (const entry of items) entry.series.comics = sizes.get(entry.series.id);
     return [
-      ...active.map((record) => item(record, accounting.get(record.id)?.totals)),
+      ...items,
       ...stored.filter((entry) => !ids.has(entry.id) && entry.snapshot)
         .map((entry) => item({ ...entry.snapshot, id: entry.id }, entry.totals, true)),
     ];
+  }
+  // The active comics grouped into series, with the issues of each in reading order (see groupSeries).
+  function seriesOf(items) {
+    const active = items.filter((entry) => entry.series);
+    return groupSeries(active, new Map(active.map((entry) => [entry.id, entry.series]))).map((group) => {
+      const comics = group.nodes.flatMap((node) => node.comics);
+      return {
+        id: group.id, title: seriesTitle(group.title) || group.title,
+        // Issues are the different numbers; two issues with the same number are alternative versions,
+        // and two comics holding the same issue are copies.
+        // A copy has the pages of its original, so they are counted once.
+        issues: group.issues, versions: group.nodes.length - group.issues, comics: group.comics,
+        pages: group.nodes.reduce((sum, node) => sum + Math.max(...node.comics.map((entry) => entry.completedPages)), 0),
+        complete: comics.filter((entry) => entry.status === 'complete').length,
+        owners: [...new Set(comics.map((entry) => entry.ownerAlias).filter(Boolean))],
+        cast: [...new Set(comics.flatMap((entry) => [entry.hostName, entry.guestName]).filter(Boolean))],
+        createdAt: group.createdAt,
+        updatedAt: Math.max(...comics.map((entry) => entry.updatedAt ?? entry.createdAt ?? 0)),
+        ...pick({ coverId: comics.find((entry) => entry.hasCover)?.id }, ['coverId']),
+        usage: comics.reduce((sum, entry) => addTotals(sum, entry.usage), emptyTotals()),
+        nodes: group.nodes,
+      };
+    });
+  }
+  // Where an active comic sits in its series: the issue before it, the ones after it and its copies.
+  // The comics of its own owner are preferred when an issue is held by several.
+  async function placeOf(id) {
+    const entries = await listSeries();
+    const self = entries.find((entry) => entry.id === id);
+    if (!self) return null;
+    const same = entries.filter((entry) => entry.series.id === self.series.id).sort(oldestFirst);
+    const brief = (entry) => ({
+      id: entry.id, title: entry.title, issue: entry.series.issue, completedPages: entry.completedPages,
+      ...(entry.ownerToken ? { ownerAlias: ownerAlias(entry.ownerToken) } : {}),
+    });
+    const holding = (originId) => same.filter((entry) => entry.series.originId === originId);
+    const lead = (list) => list.find((entry) => entry.ownerToken === self.ownerToken) ?? list[0];
+    const before = self.series.parentOriginId ? lead(holding(self.series.parentOriginId)) : null;
+    const after = [...new Set(same.filter((entry) => entry.series.parentOriginId === self.series.originId
+      && entry.series.originId !== self.series.originId).map((entry) => entry.series.originId))].map((originId) => lead(holding(originId)));
+    const first = [...same].sort((a, b) => a.series.issue - b.series.issue || oldestFirst(a, b))[0];
+    return {
+      id: self.series.id, title: seriesTitle(first.title) || first.title, issue: self.series.issue,
+      issues: new Set(same.map((entry) => entry.series.issue)).size, comics: same.length,
+      previous: before ? brief(before) : null,
+      next: after.map(brief),
+      copies: holding(self.series.originId).filter((entry) => entry.id !== id).map(brief),
+    };
   }
   async function body(req) {
     let size = 0;
@@ -97,8 +168,7 @@ export function createAdminHandler({
     }
     try { return JSON.parse(text); } catch { fail(400, 'El cuerpo JSON no es válido.'); }
   }
-  function listOptions(params) {
-    const allowed = ['query', 'status', 'sort', 'order', 'page', 'pageSize'];
+  function listOptions(params, allowed = ['query', 'status', 'sort', 'order', 'page', 'pageSize']) {
     for (const key of params.keys()) {
       if (!allowed.includes(key) || params.getAll(key).length !== 1) fail(400, 'Los filtros no son válidos.');
     }
@@ -141,7 +211,7 @@ export function createAdminHandler({
       if (page) {
         if (!['GET', 'HEAD'].includes(req.method)) fail(405, 'Método no permitido.');
         if (path.startsWith('/admin/')) {
-          const target = { '/admin/comics': '/admin#/stories', '/admin/stories': '/admin#/stories', '/admin/log': '/admin#/log' }[path.replace(/\/$/, '')] ?? '/admin';
+          const target = { '/admin/comics': '/admin#/stories', '/admin/stories': '/admin#/stories', '/admin/series': '/admin#/series', '/admin/log': '/admin#/log' }[path.replace(/\/$/, '')] ?? '/admin';
           res.writeHead(302, { Location: target }); res.end(); return true;
         }
         res.setHeader('Content-Disposition', 'inline');
@@ -217,9 +287,42 @@ export function createAdminHandler({
         return json(200, { items: items.slice((options.page - 1) * options.pageSize, options.page * options.pageSize),
           total: items.length, page: options.page, pageSize: options.pageSize });
       }
+      if (path === '/api/admin/series' && req.method === 'GET') {
+        const options = listOptions(url.searchParams, ['query', 'sort', 'order', 'page', 'pageSize']);
+        const groups = seriesOf(await allStories()).filter((group) => fold([group.title, ...group.cast, ...group.owners,
+          ...group.nodes.flatMap((node) => node.comics.map((entry) => entry.title))].join(' ')).includes(fold(options.query)));
+        const value = (group) => options.sort === 'cost' ? group.usage.costUsd
+          : options.sort === 'title' ? fold(group.title) : group[options.sort];
+        groups.sort((a, b) => {
+          const x = value(a), y = value(b);
+          return (x < y ? -1 : x > y ? 1 : String(a.id).localeCompare(String(b.id))) * (options.order === 'asc' ? 1 : -1);
+        });
+        return json(200, { items: groups.slice((options.page - 1) * options.pageSize, options.page * options.pageSize)
+          .map(({ nodes, ...group }) => group), total: groups.length, page: options.page, pageSize: options.pageSize });
+      }
+      const seriesPage = /^\/api\/admin\/series\/([^/]+)$/.exec(path);
+      if (seriesPage && req.method === 'GET') {
+        let id;
+        try { id = decodeURIComponent(seriesPage[1]); } catch { fail(400, 'Identificador no válido.'); }
+        const group = seriesOf(await allStories()).find((entry) => entry.id === id);
+        if (!group) fail(404, 'Serie no encontrada.');
+        await audit('series_view', req);
+        return json(200, { ...group, nodes: group.nodes.map((node) => ({
+          ...pick(node, ['originId', 'parentOriginId', 'issue', 'depth']), missingParent: !!node.missingParent,
+          title: node.comics[0].title, direction: node.comics.find((entry) => entry.direction)?.direction ?? '',
+          ...pick({ coverId: node.comics.find((entry) => entry.hasCover)?.id }, ['coverId']),
+          // The comic the issue was made in comes first; the others are copies of it.
+          comics: [...node.comics].sort((a, b) => Number(b.id === node.originId) - Number(a.id === node.originId)).map((entry) => ({
+            ...pick(entry, ['id', 'title', 'hostName', 'guestName', 'ownerAlias', 'status', 'completedPages', 'totalPages',
+              'createdAt', 'updatedAt', 'usage', 'shares', 'opens']),
+            original: entry.id === node.originId,
+          })),
+        })) });
+      }
       if (path === '/api/admin/usage.csv' && req.method === 'GET') {
         const fields = ['id', 'title', 'host', 'guest', 'status', 'createdAt', 'deletedAt', 'calls', 'errors',
-          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd', 'shares', 'opens'];
+          'inputText', 'inputImage', 'outputText', 'outputImage', 'cached', 'totalTokens', 'costUsd', 'shares', 'opens',
+          'seriesId', 'issue'];
         const cell = (value) => {
           let text = String(value ?? '');
           if (/^[=+\-@]/.test(text) || /^[\t\r\n]/.test(text) || /^\s+[=+\-@]/.test(text)) text = "'" + text;
@@ -227,7 +330,7 @@ export function createAdminHandler({
         };
         const rows = (await allStories()).map((entry) => {
           const values = { ...entry, host: entry.hostName, guest: entry.guestName, ...entry.usage,
-            ...entry.usage.tokens, totalTokens: entry.usage.tokens.total };
+            ...entry.usage.tokens, totalTokens: entry.usage.tokens.total, seriesId: entry.series?.id, issue: entry.series?.issue };
           return fields.map((field) => cell(values[field])).join(',');
         });
         await audit('csv_export', req);
@@ -299,11 +402,13 @@ export function createAdminHandler({
           await audit('story_view', req, id);
           session.viewedImages.delete(id);
           const summary = item({ ...source, id }, accounting?.totals, !record);
+          const series = record ? await placeOf(id) : null;
           return json(200, {
             ...pick(summary, ['id', 'title', 'hostName', 'guestName', 'createdAt', 'updatedAt', 'deletedAt',
               'deletedBy', 'status', 'completedPages', 'totalPages', 'shares', 'opens', 'lastSharedAt', 'lastOpenedAt']),
             ...pick(summary, ['ownerAlias']),
             ...pick(source, ['tone', 'styleGuide', 'invitationId']),
+            ...(series ? { series } : {}),
             ...(source.settings ? { settings: pick(source.settings, ['genre', 'language', 'premise', 'richMode']) } : {}),
             faces: !record ? [] : (record.faces ?? []).map((face) => ({
               ...pick(face, ['id', 'type', 'pageIndex', 'isLoading', 'isDecisionPage', 'choices', 'resolvedChoice']),

@@ -52,6 +52,78 @@ export interface AdminStoryItem {
     // Times the Share button was used / times a shared link was opened.
     shares: number;
     opens: number;
+    // Where it sits in its series, and how many comics the series has (absent for deleted comics).
+    series?: { id: string; issue: number; originId: string; parentOriginId: string | null; comics: number };
+}
+
+// A series as the list shows it. Issues are the different numbers; two issues with the same number are alternative
+// versions, and two comics holding the same issue are copies.
+export interface AdminSeriesItem {
+    id: string;
+    title: string;
+    issues: number;
+    versions: number;
+    comics: number;
+    pages: number;
+    complete: number;
+    // Made-up names of the owner keys, and the names of the characters.
+    owners: string[];
+    cast: string[];
+    createdAt: number;
+    updatedAt: number;
+    // A comic whose cover stands for the series.
+    coverId?: string;
+    usage: UsageTotals;
+}
+
+export interface AdminSeriesList {
+    items: AdminSeriesItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+}
+
+export interface AdminSeriesComic {
+    id: string;
+    title: string;
+    hostName: string;
+    guestName: string;
+    ownerAlias?: string;
+    status: StoryStatus;
+    completedPages: number;
+    totalPages: number;
+    createdAt: number;
+    updatedAt?: number;
+    usage: UsageTotals;
+    shares: number;
+    opens: number;
+    // The comic the issue was made in; the others are copies of it.
+    original: boolean;
+}
+
+// One issue of a series, in reading order: `depth` is how many issues come before it.
+export interface AdminSeriesNode {
+    originId: string;
+    parentOriginId: string | null;
+    issue: number;
+    depth: number;
+    missingParent: boolean;
+    title: string;
+    direction: string;
+    coverId?: string;
+    comics: AdminSeriesComic[];
+}
+
+export interface AdminSeriesDetail extends AdminSeriesItem {
+    nodes: AdminSeriesNode[];
+}
+
+export interface AdminSeriesLink {
+    id: string;
+    title: string;
+    issue: number;
+    completedPages: number;
+    ownerAlias?: string;
 }
 
 export interface AdminStoryList {
@@ -87,6 +159,9 @@ export interface AdminStoryDetail {
     tone?: string;
     styleGuide?: string;
     invitationId?: string | null;
+    // Its place in its series: the issue before it, the ones that continue it and the copies of it.
+    series?: { id: string; title: string; issue: number; issues: number; comics: number;
+        previous: AdminSeriesLink | null; next: AdminSeriesLink[]; copies: AdminSeriesLink[] };
     status: StoryStatus;
     completedPages: number;
     totalPages: number;
