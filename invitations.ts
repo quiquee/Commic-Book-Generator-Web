@@ -154,11 +154,22 @@ export function errorMessage(error: unknown): string {
     return error instanceof Error ? localizeText(error.message) : t('error.unexpected');
 }
 
-export async function photoFromFile(file: File): Promise<Persona> {
+export async function photoFromFile(file: Blob): Promise<Persona> {
     if (!file.type.startsWith('image/') || file.size > 20 * 1024 * 1024) {
         throw new Error(t('error.imageTooLargeFile'));
     }
     const base64 = (await toJpegDataUrl(file, 1024, 0.8)).split(',')[1];
     if (base64.length > 1_398_104) throw new Error(t('error.imageTooLarge'));
     return { base64, desc: 'User provided character' };
+}
+
+// A photo named by its public address (see castLink.ts). The server downloads it, since a page cannot read
+// images from other sites; from there on it is treated like an uploaded file.
+export async function photoFromUrl(address: string): Promise<Persona> {
+    const response = await fetch(`/api/photo?url=${encodeURIComponent(address)}`);
+    if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(typeof result?.error === 'string' ? result.error : t('error.requestFailed'));
+    }
+    return photoFromFile(await response.blob());
 }

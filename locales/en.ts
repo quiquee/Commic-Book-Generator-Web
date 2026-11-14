@@ -442,4 +442,7 @@ export const en: Record<MessageKey, string> = {
     'admin.place': 'Place in the series',
     'admin.nextHint': 'More than one comic continues this issue: they are alternative versions.',
     'adminLib.seriesComics': 'Comics: {comics} · Owners: {owners}',
+    'cast.loadingLink': 'Loading the photos from the link…',
+    'error.heroPhotoLink': 'The hero photo from the link could not be loaded: {reason}',
+    'error.costarPhotoLink': 'The co-star photo from the link could not be loaded: {reason}',
 };

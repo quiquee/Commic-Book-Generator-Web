@@ -441,6 +441,9 @@ export const es = {
     "admin.place": "Lugar en la serie",
     "admin.nextHint": "Más de un cómic continúa este número: son versiones alternativas.",
     "adminLib.seriesComics": "Cómics: {comics} · Propietarios: {owners}",
+    "cast.loadingLink": "Cargando las fotos del enlace…",
+    "error.heroPhotoLink": "No se pudo cargar la foto del héroe del enlace: {reason}",
+    "error.costarPhotoLink": "No se pudo cargar la foto del coprotagonista del enlace: {reason}",
 };
 
 export type MessageKey = keyof typeof es;

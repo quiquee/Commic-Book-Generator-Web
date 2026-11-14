@@ -442,4 +442,7 @@ export const fr: Record<MessageKey, string> = {
     'admin.place': 'Place dans la série',
     'admin.nextHint': 'Plusieurs BD continuent ce numéro : ce sont des versions alternatives.',
     'adminLib.seriesComics': 'BD : {comics} · Propriétaires : {owners}',
+    'cast.loadingLink': 'Chargement des photos du lien…',
+    'error.heroPhotoLink': 'Impossible de charger la photo du héros indiquée dans le lien : {reason}',
+    'error.costarPhotoLink': 'Impossible de charger la photo du partenaire indiquée dans le lien : {reason}',
 };

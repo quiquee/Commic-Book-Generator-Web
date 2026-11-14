@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TONES, Persona } from './types';
 import { defaultComicLanguage, t } from './i18n';
 import { Setup } from './Setup';
@@ -21,7 +21,8 @@ import { clearDraft, loadDraft, saveDraft } from './draft';
 import { MusicPlayer } from './MusicPlayer';
 import type { Mood } from './music';
 import { ContinueStory } from './ContinueStory';
-import { errorMessage, fetchServerConfig, photoFromFile, storageKeys } from './invitations';
+import { errorMessage, fetchServerConfig, photoFromFile, photoFromUrl, storageKeys } from './invitations';
+import { readCastLink, withoutCastLink, type CastLink } from './castLink';
 import { createStory, findOwnerToken, getRoute, loadStoryKeys, navigate, newDraftId, saveCopiedKeys, saveStoryKeys, type CopiedStory, type StoryAuth, type StoryDocument, type StoryKey } from './stories';
 import { cleanTitle, isTitleTaken, loadTitleHistory, rememberTitle } from './titles';
 
@@ -43,6 +44,16 @@ const App: React.FC = () => {
 
   const [hero, setHero] = useState<Persona | null>(null);
   const [friend, setFriend] = useState<Persona | null>(null);
+  // The hero's name is the one saved in this browser (typed in an invitation or brought by a link).
+  const [heroName, setHeroName] = useState(() => {
+    try { return localStorage.getItem(storageKeys.hostName) || ''; } catch { return ''; }
+  });
+  // Name of a co-star added by photo; only a link can give one.
+  const [friendName, setFriendName] = useState('');
+  // The cast a link brought with it (see castLink.ts), and whether its photos are still loading.
+  const [castLink] = useState(() => readCastLink(window.location.search));
+  const castLinkTaken = useRef(false);
+  const [castLoading, setCastLoading] = useState(false);
   // "Mi historia" (own premise) is the default; the ready-made genres are the alternative.
   // What was typed before a reload comes back (see draft.ts).
   const [restored] = useState(loadDraft);
@@ -86,8 +97,44 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Sets the cast from a link: names at once, photos as they arrive. Whatever fails leaves what was there.
+  const applyCastLink = async (link: CastLink) => {
+    if (link.heroName) {
+      try { localStorage.setItem(storageKeys.hostName, link.heroName); } catch { /* still used for this visit */ }
+      setHeroName(link.heroName);
+    }
+    if (!link.hero && !link.costar) return;
+    setCastLoading(true);
+    const [heroPhoto, costarPhoto] = await Promise.allSettled([
+      link.hero ? photoFromUrl(link.hero) : null,
+      link.costar ? photoFromUrl(link.costar) : null
+    ]);
+    const failures: string[] = [];
+    if (heroPhoto.status === 'rejected') failures.push(t('error.heroPhotoLink', { reason: errorMessage(heroPhoto.reason) }));
+    else if (heroPhoto.value) {
+      setHero(heroPhoto.value);
+      try { localStorage.setItem(storageKeys.hero, JSON.stringify(heroPhoto.value)); }
+      catch (error) { failures.push(t('error.saveHeroPhoto', { reason: errorMessage(error) })); }
+    }
+    if (costarPhoto.status === 'rejected') failures.push(t('error.costarPhotoLink', { reason: errorMessage(costarPhoto.reason) }));
+    else if (costarPhoto.value) {
+      setFriend(costarPhoto.value);
+      setFriendName(link.costarName);
+      setCastMode('photo');
+    }
+    setCastLoading(false);
+    if (failures.length) setAppError(failures.join(' '));
+  };
+
   useEffect(() => {
     loadSavedHero();
+    // Once only (development runs this effect twice), and only on the setup screen: a link that opens a comic
+    // or an invitation has its own cast. The parameters leave the address so that a reload does not repeat them.
+    if (castLink && !castLinkTaken.current) {
+      castLinkTaken.current = true;
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${withoutCastLink(window.location.search)}${window.location.hash}`);
+      if (!route.story && !route.join) void applyCastLink(castLink);
+    }
     fetchServerConfig()
       .then(config => {
         if (config.geminiProxy === false) setAppError(t('error.generationUnavailable'));
@@ -106,6 +153,7 @@ const App: React.FC = () => {
 
   const resetSetup = useCallback(() => {
     setFriend(null);
+    setFriendName('');
     setCastMode('solo');
     setActiveInvitation(null);
     setRedoSource(null);
@@ -160,8 +208,8 @@ const App: React.FC = () => {
     : invitation?.response ? { ...invitation.response.persona, desc: invitation.response.name } : null;
 
   const currentNames = () => ({
-    hostName: invitation?.invitation.hostName || localStorage.getItem(storageKeys.hostName) || t('cast.protagonist'),
-    guestName: invitation?.invitation.guestName || (coStar ? t('cast.costar') : '')
+    hostName: invitation?.invitation.hostName || heroName || t('cast.protagonist'),
+    guestName: invitation?.invitation.guestName || (coStar ? (castMode === 'photo' && friendName) || t('cast.costar') : '')
   });
 
   // What still blocks the launch button, as its label.
@@ -246,7 +294,8 @@ const App: React.FC = () => {
        } catch (error) { setAppError(t('error.saveHeroPhoto', { reason: errorMessage(error) })); }
   };
   const handleFriendUpload = async (file: File) => {
-       try { setFriend(await photoFromFile(file)); setAppError(''); }
+       // Another photo is another person: a name that came with a link no longer applies.
+       try { setFriend(await photoFromFile(file)); setFriendName(''); setAppError(''); }
        catch (error) { setAppError(`No se pudo subir la foto del coprotagonista: ${errorMessage(error)}`); }
   };
 
@@ -304,6 +353,7 @@ const App: React.FC = () => {
           show
           isTransitioning={isTransitioning}
           hero={hero}
+          heroName={invitation?.invitation.hostName || heroName}
           friend={coStar}
           coStarSlot={
             <CoStarSection
@@ -313,17 +363,23 @@ const App: React.FC = () => {
               onModeChange={setCastMode}
               hero={hero}
               friend={friend}
+              friendName={friendName}
+              heroName={heroName}
+              onHeroName={setHeroName}
               onFriendUpload={handleFriendUpload}
               settings={{ genre: selectedGenre, language: selectedLanguage, premise: customPremise, richMode }}
               onActiveChange={changeActiveInvitation}
             />
           }
-          banner={redoSource && (
-            <div role="status" className="text-left border-2 border-black bg-yellow-100 p-2 mb-3 flex flex-wrap items-center gap-2">
-              <p className="flex-1 text-sm">🔁 {t('redo.banner', { title: redoSource.title })}</p>
-              <button type="button" onClick={startFresh} className="underline text-sm">{t('redo.startFresh')}</button>
-            </div>
-          )}
+          banner={<>
+            {castLoading && <p role="status" className="text-left text-sm border-2 border-black bg-blue-100 p-2 mb-3 animate-pulse">⏳ {t('cast.loadingLink')}</p>}
+            {redoSource && (
+              <div role="status" className="text-left border-2 border-black bg-yellow-100 p-2 mb-3 flex flex-wrap items-center gap-2">
+                <p className="flex-1 text-sm">🔁 {t('redo.banner', { title: redoSource.title })}</p>
+                <button type="button" onClick={startFresh} className="underline text-sm">{t('redo.startFresh')}</button>
+              </div>
+            )}
+          </>}
           storyLockedReason={invitation ? t('story.locked', { name: invitation.invitation.guestName }) : undefined}
           selectedGenre={selectedGenre}
           selectedLanguage={selectedLanguage}

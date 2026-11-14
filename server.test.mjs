@@ -946,3 +946,51 @@ test('the admin transfers a copy through a one-time link, and alias names stay w
   assert.deepEqual(firstCopy.payload.series, { id: source.payload.id, issue: 1 });
   assert.equal(firstCopy.payload.ownerAlias, series.payload.ownerAlias);
 });
+
+test('a photo from another site is passed on to the app only: guarded address, own pages, a few per minute', async () => {
+  // The default downloader refuses these before connecting anywhere.
+  for (const address of ['http://example.com/a.jpg', 'no-es-una-url', 'https://user:clave@example.com/a.jpg']) {
+    const refused = await api(`/api/photo?url=${encodeURIComponent(address)}`);
+    assert.equal(refused.response.status, 400, address);
+    assert.equal(refused.payload.error, 'La dirección de la foto no es válida. Debe empezar por https://.');
+  }
+  for (const address of ['https://127.0.0.1/a.jpg', 'https://169.254.169.254/latest/meta-data', 'https://[::1]/a.jpg', 'https://192.168.1.10/a.jpg']) {
+    const refused = await api(`/api/photo?url=${encodeURIComponent(address)}`);
+    assert.equal(refused.response.status, 400, address);
+    assert.equal(refused.payload.error, 'La dirección de la foto no es pública.');
+  }
+  assert.equal((await api('/api/photo')).response.status, 400);
+  assert.equal((await api('/api/photo', { method: 'POST', body: {} })).response.status, 405);
+
+  await stopServer();
+  const asked = [];
+  const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(32, 7)]);
+  await startServer({
+    fetchPhoto: async (address) => {
+      asked.push(address);
+      return { data: photo, type: 'image/jpeg' };
+    },
+  });
+  const address = 'https://fotos.example/ana.jpg?talla=2&v=á';
+  const served = await fetch(`${baseUrl}/api/photo?url=${encodeURIComponent(address)}`, { headers: { 'sec-fetch-site': 'same-origin' } });
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get('content-type'), 'image/jpeg');
+  assert.equal(served.headers.get('cache-control'), 'no-store');
+  assert.equal(served.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(served.headers.get('content-security-policy'), /sandbox/);
+  assert.deepEqual(Buffer.from(await served.arrayBuffer()), photo);
+  assert.deepEqual(asked, [address]);
+
+  // Another site cannot load images through this server.
+  const foreign = await api(`/api/photo?url=${encodeURIComponent(address)}`, { headers: { 'sec-fetch-site': 'cross-site' } });
+  assert.equal(foreign.response.status, 403);
+  assert.equal(asked.length, 1);
+
+  // Twelve downloads a minute for each visitor; the refused one above did not count.
+  for (let index = asked.length; index < 12; index += 1) {
+    assert.equal((await fetch(`${baseUrl}/api/photo?url=${encodeURIComponent(address)}`)).status, 200);
+  }
+  const limited = await api(`/api/photo?url=${encodeURIComponent(address)}`);
+  assert.equal(limited.response.status, 429);
+  assert.equal(asked.length, 12);
+});

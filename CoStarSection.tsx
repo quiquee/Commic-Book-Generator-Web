@@ -21,6 +21,11 @@ interface CoStarSectionProps {
     onModeChange: (mode: CastMode) => void;
     hero: Persona | null;
     friend: Persona | null;
+    // Name of the co-star added by photo, when a link gave one.
+    friendName?: string;
+    // The hero's saved name: fills "your name" in the invitation, and is reported back when typed there.
+    heroName?: string;
+    onHeroName?: (name: string) => void;
     onFriendUpload: (file: File) => void;
     settings: StorySettings;
     onActiveChange: (active: ActiveInvitation | null) => void;
@@ -87,7 +92,7 @@ function ShareInvitation({ url, hostName, guestName }: { url: string; hostName: 
     );
 }
 
-export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload, settings, onActiveChange, initialActiveId = null }: CoStarSectionProps) {
+export function CoStarSection({ mode, onModeChange, hero, friend, friendName, heroName, onHeroName, onFriendUpload, settings, onActiveChange, initialActiveId = null }: CoStarSectionProps) {
     const [hostName, setHostName] = useState('');
     const [guestName, setGuestName] = useState('');
     const [baseUrl, setBaseUrl] = useState(window.location.origin);
@@ -120,6 +125,9 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
         }
         return () => controller.abort();
     }, []);
+
+    // A name that arrives later (from a link) fills "your name" too.
+    useEffect(() => { if (heroName) setHostName(heroName); }, [heroName]);
 
     useEffect(() => {
         if (!keys.length) return;
@@ -166,6 +174,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
             if (!hostName.trim() || !guestName.trim()) throw new Error(t('invite.namesRequired'));
             if (settings.genre === 'Custom' && !settings.premise.trim()) throw new Error(t('invite.premiseRequired'));
             localStorage.setItem(storageKeys.hostName, hostName.trim());
+            onHeroName?.(hostName.trim());
             const created = await invitationRequest<InvitationKeys>('', undefined, {
                 hostName: hostName.trim(), guestName: guestName.trim(), hero, settings
             }, mutationController.current?.signal);
@@ -220,7 +229,8 @@ export function CoStarSection({ mode, onModeChange, hero, friend, onFriendUpload
             {mode === 'photo' && (friend ? (
                 <div className="flex gap-3 items-center">
                     <img src={`data:image/jpeg;base64,${friend.base64}`} alt={t('setup.costarPreview')} className="w-20 h-20 object-cover border-2 border-black bg-white rotate-[2deg]" />
-                    <div className="text-sm">
+                    <div className="text-sm min-w-0">
+                        {friendName && <p className="font-comic text-lg leading-tight break-words">{friendName}</p>}
                         <p className="text-green-700 font-bold font-comic">✓ {t('common.ready')}</p>
                         <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 inline-block mt-1">
                             {t('common.replace')}

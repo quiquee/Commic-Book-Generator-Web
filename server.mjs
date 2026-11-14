@@ -14,6 +14,7 @@ import { createPushService, validateSubscription } from './push.mjs';
 import { isStoryFinished, nextPageToGenerate } from './storyLogic.ts';
 import { ownerAlias } from './alias.ts';
 import { planSeries, seriesEntry, seriesTitle } from './series.mjs';
+import { PhotoError, createPhotoFetcher, createRateLimit } from './photoFetch.mjs';
 import { translateServerText } from './locales/serverText.ts';
 
 const PUSH_LANGUAGES = new Set(['es', 'en', 'fr', 'de', 'gl']);
@@ -474,7 +475,11 @@ export function createAppServer({
   pushDir,
   pushSubject,
   pushService,
+  // Downloads the photos passed in a link (see photoFetch.mjs); tests replace it.
+  fetchPhoto = createPhotoFetcher(),
 } = {}) {
+  const photoRateAllowed = createRateLimit(12);
+  let photoDownloads = 0;
   const configuredBaseUrl = parsePublicBaseUrl(publicBaseUrl);
   const storageDir = resolve(dataDir);
   const storyStorageDir = resolve(storiesDir);
@@ -1398,6 +1403,38 @@ export function createAppServer({
     sendJson(response, 404, { error: 'No se encontró la ruta de la API.' });
   }
 
+  // A photo from another site, for the app's own pages only: links can name the hero and the co-star by photo address.
+  async function handlePhoto(request, response, url) {
+    if (request.method !== 'GET') fail(405, 'Método no permitido.');
+    // Browsers say where a request comes from; other sites may not use this to load images through the server.
+    const site = request.headers['sec-fetch-site'];
+    if (site && site !== 'same-origin') fail(403, 'Acceso no permitido.');
+    const forwarded = trustProxy && typeof request.headers['x-forwarded-for'] === 'string'
+      ? request.headers['x-forwarded-for'].split(',')[0].trim() : null;
+    if (!photoRateAllowed(forwarded || request.socket.remoteAddress || 'unknown') || photoDownloads >= 6) {
+      fail(429, 'Demasiadas fotos en poco tiempo. Inténtalo más tarde.');
+    }
+    let photo;
+    photoDownloads += 1;
+    try {
+      photo = await fetchPhoto(url.searchParams.get('url'));
+    } catch (error) {
+      if (error instanceof PhotoError) fail(error.status, error.message);
+      throw error;
+    } finally {
+      photoDownloads -= 1;
+    }
+    response.writeHead(200, {
+      'content-type': photo.type,
+      'content-length': photo.data.length,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      'content-disposition': 'attachment',
+    });
+    response.end(photo.data);
+  }
+
   async function handleApi(request, response, url) {
     const segments = url.pathname.split('/').filter(Boolean);
     if (segments.length === 2 && segments[0] === 'api' && segments[1] === 'config') {
@@ -1408,6 +1445,10 @@ export function createAppServer({
     if (segments.length === 3 && segments[0] === 'api' && segments[1] === 'push' && segments[2] === 'key') {
       if (request.method !== 'GET') fail(405, 'Método no permitido.');
       sendJson(response, 200, { publicKey: await push.publicKey() });
+      return;
+    }
+    if (segments.length === 2 && segments[0] === 'api' && segments[1] === 'photo') {
+      await handlePhoto(request, response, url);
       return;
     }
     if (segments[0] === 'api' && segments[1] === 'stories') {

@@ -442,4 +442,7 @@ export const gl: Record<MessageKey, string> = {
     'admin.place': 'Lugar na serie',
     'admin.nextHint': 'Máis dun cómic continúa este número: son versións alternativas.',
     'adminLib.seriesComics': 'Cómics: {comics} · Propietarios: {owners}',
+    'cast.loadingLink': 'Cargando as fotos da ligazón…',
+    'error.heroPhotoLink': 'Non se puido cargar a foto do heroe da ligazón: {reason}',
+    'error.costarPhotoLink': 'Non se puido cargar a foto do coprotagonista da ligazón: {reason}',
 };

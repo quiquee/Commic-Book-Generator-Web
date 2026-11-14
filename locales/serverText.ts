@@ -65,6 +65,13 @@ const EXACT: Record<string, Translations> = {
     'Los cambios de la historia no son válidos.': { en: 'The comic changes are not valid.', fr: 'Les modifications de la BD ne sont pas valides.', de: 'Die Änderungen am Comic sind ungültig.', gl: 'Os cambios do cómic non son válidos.' },
     'Los filtros no son válidos.': { en: 'The filters are not valid.', fr: 'Les filtres ne sont pas valides.', de: 'Die Filter sind ungültig.', gl: 'Os filtros non son válidos.' },
     'Modelo no permitido.': { en: 'Model not allowed.', fr: 'Modèle non autorisé.', de: 'Modell nicht erlaubt.', gl: 'Modelo non permitido.' },
+    'Acceso no permitido.': { en: 'Access not allowed.', fr: 'Accès non autorisé.', de: 'Zugriff nicht erlaubt.', gl: 'Acceso non permitido.' },
+    'La dirección de la foto no es válida. Debe empezar por https://.': { en: 'The photo address is not valid. It must start with https://.', fr: 'L’adresse de la photo n’est pas valide. Elle doit commencer par https://.', de: 'Die Adresse des Fotos ist ungültig. Sie muss mit https:// beginnen.', gl: 'O enderezo da foto non é válido. Debe comezar por https://.' },
+    'La dirección de la foto no es pública.': { en: 'The photo address is not public.', fr: 'L’adresse de la photo n’est pas publique.', de: 'Die Adresse des Fotos ist nicht öffentlich.', gl: 'O enderezo da foto non é público.' },
+    'No se pudo descargar la foto.': { en: 'The photo could not be downloaded.', fr: 'Impossible de télécharger la photo.', de: 'Das Foto konnte nicht heruntergeladen werden.', gl: 'Non se puido descargar a foto.' },
+    'La foto tardó demasiado en descargarse.': { en: 'The photo took too long to download.', fr: 'Le téléchargement de la photo a pris trop de temps.', de: 'Das Herunterladen des Fotos hat zu lange gedauert.', gl: 'A foto tardou demasiado en descargarse.' },
+    'La foto debe ser JPEG, PNG o WebP.': { en: 'The photo must be a JPEG, PNG or WebP.', fr: 'La photo doit être au format JPEG, PNG ou WebP.', de: 'Das Foto muss ein JPEG, PNG oder WebP sein.', gl: 'A foto debe ser JPEG, PNG ou WebP.' },
+    'Demasiadas fotos en poco tiempo. Inténtalo más tarde.': { en: 'Too many photos in a short time. Try again later.', fr: 'Trop de photos en peu de temps. Réessaie plus tard.', de: 'Zu viele Fotos in kurzer Zeit. Versuche es später erneut.', gl: 'Demasiadas fotos en pouco tempo. Téntao máis tarde.' },
     'Método no permitido.': { en: 'Method not allowed.', fr: 'Méthode non autorisée.', de: 'Methode nicht erlaubt.', gl: 'Método non permitido.' },
     'No se encontró el panel de administración.': { en: 'The admin panel was not found.', fr: 'Le panneau d’administration est introuvable.', de: 'Das Admin-Panel wurde nicht gefunden.', gl: 'Non se atopou o panel de administración.' },
     'No se encontró la aplicación.': { en: 'The app was not found.', fr: 'L’application est introuvable.', de: 'Die App wurde nicht gefunden.', gl: 'Non se atopou a aplicación.' },
@@ -112,6 +119,7 @@ const EXACT: Record<string, Translations> = {
 const PATTERNS: [RegExp, Translations][] = [
     [/^(.+) todavía no se ha unido a la invitación\.$/, { en: '$1 has not joined the invitation yet.', fr: '$1 n’a pas encore rejoint l’invitation.', de: '$1 ist der Einladung noch nicht beigetreten.', gl: '$1 aínda non se uniu ao convite.' }],
     [/^El campo (.+) no es válido\.$/, { en: 'The field $1 is not valid.', fr: 'Le champ $1 n’est pas valide.', de: 'Das Feld $1 ist ungültig.', gl: 'O campo $1 non é válido.' }],
+    [/^La foto supera (\d+) MB\.$/, { en: 'The photo is larger than $1 MB.', fr: 'La photo dépasse $1 Mo.', de: 'Das Foto ist größer als $1 MB.', gl: 'A foto supera $1 MB.' }],
     [/^La imagen de (.+) no es un JPEG válido\.$/, { en: 'The image for $1 is not a valid JPEG.', fr: 'L’image de $1 n’est pas un JPEG valide.', de: 'Das Bild für $1 ist kein gültiges JPEG.', gl: 'A imaxe de $1 non é un JPEG válido.' }],
 ];
 
