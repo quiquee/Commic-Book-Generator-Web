@@ -19,7 +19,7 @@ export const LoadingFX: React.FC<{ sounds?: string[] }> = ({ sounds }) => {
             const x = `${20 + Math.random() * 60}%`;
             const y = `${20 + Math.random() * 60}%`;
             const rot = Math.random() * 60 - 30;
-            const colors = ['text-yellow-400', 'text-red-500', 'text-blue-400', 'text-orange-500', 'text-purple-500'];
+            const colors = ['text-yellow-400', 'text-orange-500', 'text-brand-blue', 'text-sky-400', 'text-brand-orange-deep'];
             const color = colors[Math.floor(Math.random() * colors.length)];
             setParticles(prev => [...prev, { id, text, x, y, rot, color }].slice(-4));
         }, 600);

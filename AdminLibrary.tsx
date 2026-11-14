@@ -61,7 +61,7 @@ export function AdminLibrary({ onOpen }: AdminLibraryProps) {
 
     const openButton = (item: Comic) => (
         <button type="button" onClick={() => open(item)} disabled={openingId !== null}
-            className={`comic-btn px-3 py-2 ${item.status === 'complete' ? 'bg-blue-500 text-white' : 'bg-green-500 text-black'}`}>
+            className={`comic-btn px-3 py-2 ${item.status === 'complete' ? 'btn-blue' : 'btn-primary'}`}>
             {openingId === item.id ? t('adminLib.opening') : item.status === 'complete' ? t('common.read') : t('common.continue')}
         </button>
     );
@@ -113,7 +113,7 @@ export function AdminLibrary({ onOpen }: AdminLibraryProps) {
                                     </div>
                                     <button type="button" aria-expanded={isOpen} aria-controls={listId}
                                         onClick={() => setExpanded(known => { const next = new Set(known); if (!next.delete(group.id)) next.add(group.id); return next; })}
-                                        className="comic-btn bg-gray-200 px-3 py-2">{isOpen ? t('library.hideIssues') : t('library.showIssues')} {isOpen ? '▴' : '▾'}</button>
+                                        className="comic-btn btn-white px-3 py-2">{isOpen ? t('library.hideIssues') : t('library.showIssues')} {isOpen ? '▴' : '▾'}</button>
                                     {openButton(group.comics[0])}
                                 </div>
                                 {isOpen && (

@@ -103,7 +103,7 @@ export function ContinueStory({ source, ownerToken, existingTitles, onCancel, on
                 <h2 id="continue-title" className="font-comic text-2xl">{t('continue.title', { issue })}</h2>
                 {loading && <p role="status" className="font-comic text-lg animate-pulse">{t('continue.loading')}</p>}
                 {error && <p role="alert" className="text-red-700 font-bold">{error}</p>}
-                {!loading && error && !recap && <button type="button" onClick={load} className="comic-btn bg-yellow-400 px-3 py-2 self-start">{t('view.retry')}</button>}
+                {!loading && error && !recap && <button type="button" onClick={load} className="comic-btn btn-yellow px-3 py-2 self-start">{t('view.retry')}</button>}
                 {recap && <>
                     <section>
                         <h3 className="font-comic text-lg">{t('continue.recap')}</h3>
@@ -133,8 +133,8 @@ export function ContinueStory({ source, ownerToken, existingTitles, onCancel, on
                     </label>
                 </>}
                 <div className="flex justify-end gap-2">
-                    <button type="button" onClick={onCancel} disabled={creating} className="comic-btn bg-gray-200 px-3 py-2">{t('common.cancel')}</button>
-                    <button type="button" onClick={start} disabled={!canStart} className="comic-btn bg-red-600 text-white px-3 py-2 disabled:bg-gray-400">{creating ? t('launch.going') : t('continue.start', { issue })}</button>
+                    <button type="button" onClick={onCancel} disabled={creating} className="comic-btn btn-white px-3 py-2">{t('common.cancel')}</button>
+                    <button type="button" onClick={start} disabled={!canStart} className="comic-btn btn-primary px-3 py-2">{creating ? t('launch.going') : t('continue.start', { issue })}</button>
                 </div>
             </div>
         </div>

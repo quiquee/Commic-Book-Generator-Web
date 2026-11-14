@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { groupLibrary, seriesName, seriesPosition, type SeriesNode, type SeriesTree } from './seriesLogic.ts';
+import { finishedIssues, groupLibrary, seriesName, seriesPosition, type SeriesNode, type SeriesTree } from './seriesLogic.ts';
 
 const node = (originId: string, issue: number, parentOriginId: string | null, extra: Partial<SeriesNode> = {}): SeriesNode => ({
     originId, parentOriginId, issue, storyId: originId, stories: [originId], title: `Serie #${issue}`, direction: '',
@@ -69,4 +69,19 @@ test('the library shows one entry per series with its issues and pages', () => {
         ['old', 'Sin serie', 1, 12, 1, 'old'],
     ]);
     assert.deepEqual(groups[0].comics.map(item => item.id), ['a', 'b', 'c2', 'c']);
+});
+
+test('the PDF of a series holds the finished issues of the branch being read', () => {
+    const tree: SeriesTree = { id: 'a', title: 'Serie', nodes: [
+        node('a', 1, null, { mine: true }),
+        node('b', 2, 'a', { mine: true }),
+        node('c', 3, 'b', { updatedAt: 5 }),
+        node('d', 3, 'b', { mine: true, updatedAt: 9, completedPages: 4 }),
+        node('e', 4, 'c'),
+    ] };
+    // From the reader's own issues: their unfinished #3 is left out, and the other branch is not theirs to follow.
+    assert.deepEqual(finishedIssues(seriesPosition(tree, 'b')!).map(item => item.originId), ['a', 'b']);
+    // Reading someone else's branch gives that branch, from the first issue to its last.
+    assert.deepEqual(finishedIssues(seriesPosition(tree, 'c')!).map(item => item.originId), ['a', 'b', 'c', 'e']);
+    assert.deepEqual(finishedIssues(seriesPosition(tree, 'd')!).map(item => item.originId), ['a', 'b']);
 });

@@ -80,6 +80,11 @@ export function seriesPosition(tree: SeriesTree, storyId: string, isMine: (node:
     };
 }
 
+// The issues of the branch being read that are drawn to the end, first issue first: what a PDF of the series holds.
+export function finishedIssues(position: SeriesPosition): SeriesNode[] {
+    return position.path.filter(node => node.totalPages > 0 && node.completedPages >= node.totalPages);
+}
+
 // What the library needs of each comic.
 export interface LibraryComic {
     id: string;

@@ -272,6 +272,12 @@ export function createAdminHandler({
           budget: { dailyBudgetUsd, dailyTokenLimit, todayCostUsd: overview.today.costUsd, todayTokens: overview.today.tokens.total },
         });
       }
+      // Gives a cost to the calls recorded before there were prices for them.
+      if (path === '/api/admin/usage/price' && req.method === 'POST') {
+        const result = await usage.priceUncosted();
+        await audit('usage_price', req);
+        return json(200, result);
+      }
       if (path === '/api/admin/stories' && req.method === 'GET') {
         const options = listOptions(url.searchParams);
         const items = (await allStories()).filter((entry) =>

@@ -1,7 +1,7 @@
 import type { ComicFace, Persona } from './types.ts';
 import { invitationRequest, type StorySettings } from './invitations.ts';
 import { intlLocale, t } from './i18n.ts';
-import type { SeriesTree } from './seriesLogic.ts';
+import type { SeriesNode, SeriesTree } from './seriesLogic.ts';
 
 export type StoryAuth =
     | { kind: 'owner'; token: string }
@@ -144,6 +144,18 @@ export function findOwnerToken(storyId: string): string | null {
         own = loadStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
     } catch { /* fall back to admin keys */ }
     return own ?? loadAdminStoryKeys().find(key => key.id === storyId)?.ownerToken ?? null;
+}
+
+// The reader holds the key of one of the comics of this issue.
+export const holdsKey = (node: SeriesNode): boolean => node.mine || node.stories.some(id => !!findOwnerToken(id));
+// An issue is read from the reader's own comic when they have one of it.
+export const comicOf = (node: SeriesNode): string => node.stories.find(id => !!findOwnerToken(id)) ?? node.storyId;
+
+// Another comic of the series opens with its own key when the reader has it, with this comic's key otherwise.
+export function issueAuth(auth: StoryAuth, id: string): StoryAuth {
+    const own = findOwnerToken(id);
+    if (own) return { kind: 'owner', token: own };
+    return auth.kind === 'owner' ? { kind: 'family', token: auth.token } : auth;
 }
 
 export function authToken(auth: StoryAuth): string {

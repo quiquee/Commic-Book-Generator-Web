@@ -33,7 +33,7 @@ export function ClaimStory({ storyId, claim, onClaimed, onExit }: ClaimStoryProp
                 <>
                     <h1 className="font-comic text-3xl mb-2">{t('claim.failedTitle')}</h1>
                     <p role="alert" className="mb-4">{t('claim.failed', { reason: error })}</p>
-                    <button type="button" onClick={onExit} className="comic-btn bg-green-500 px-4 py-2">{t('panel.backToMenu')}</button>
+                    <button type="button" onClick={onExit} className="comic-btn btn-primary px-4 py-2">{t('panel.backToMenu')}</button>
                 </>
             ) : <p role="status" className="font-comic text-3xl">{t('claim.saving')}</p>}
         </div>

@@ -66,7 +66,7 @@ export function MusicPlayer({ mood }: MusicPlayerProps) {
 
     return (
         <button type="button" onClick={toggle} aria-pressed={!muted} aria-label={muted ? t('music.on') : t('music.off')} title={muted ? t('music.on') : t('music.off')}
-          className="fixed bottom-2 right-2 z-[500] comic-btn bg-yellow-400/90 text-black w-10 h-10 text-xl leading-none flex items-center justify-center">
+          className="fixed bottom-2 right-2 z-[500] comic-btn btn-yellow w-10 h-10 text-xl leading-none flex items-center justify-center">
             {muted ? '🔇' : '🔊'}
         </button>
     );

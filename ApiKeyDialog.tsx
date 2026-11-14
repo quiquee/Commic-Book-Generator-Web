@@ -21,7 +21,7 @@ export const ApiKeyDialog: React.FC<ApiKeyDialogProps> = ({ onContinue }) => {
            <span className="text-5xl">🔑</span>
         </div>
 
-        <h2 className="font-comic text-5xl text-red-600 mb-4 uppercase tracking-wide leading-none" style={{textShadow: '2px 2px 0px black'}}>
+        <h2 className="font-comic text-5xl text-brand-orange-deep mb-4 uppercase tracking-wide leading-none" style={{textShadow: '2px 2px 0px black'}}>
           {t('apiKey.title')}
         </h2>
         
@@ -40,7 +40,7 @@ export const ApiKeyDialog: React.FC<ApiKeyDialogProps> = ({ onContinue }) => {
 
         <button 
           onClick={onContinue}
-          className="comic-btn bg-blue-500 text-white text-2xl px-8 py-4 w-full hover:bg-blue-400 transition-transform active:scale-95 uppercase tracking-widest"
+          className="comic-btn btn-blue text-2xl px-8 py-4 w-full transition-transform active:scale-95 uppercase tracking-widest"
         >
           {t('apiKey.unlock')}
         </button>

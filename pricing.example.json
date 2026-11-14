@@ -1,18 +1,31 @@
 {
-  "version": "AAAA-MM-DD",
+  "version": "2026-11-14",
   "currency": "USD",
+  "source": "https://ai.google.dev/gemini-api/docs/pricing — Standard paid tier, USD per 1M tokens, read on 2026-11-14",
   "models": {
     "gemini-3.8-flash": {
-      "inputText": "<USD por 1M tokens>",
-      "inputImage": "<USD por 1M tokens>",
-      "outputText": "<USD por 1M tokens>",
-      "outputImage": "<USD por 1M tokens>"
+      "inputText": 0.75,
+      "inputImage": 0.75,
+      "outputText": 3.75
     },
     "gemini-nano-banana-2.1": {
-      "inputText": "<USD por 1M tokens>",
-      "inputImage": "<USD por 1M tokens>",
-      "outputText": "<USD por 1M tokens>",
-      "outputImage": "<USD por 1M tokens>"
+      "inputText": 1.5,
+      "inputImage": 1.5,
+      "outputText": 7.5,
+      "outputImage": 30
     }
-  }
+  },
+  "changes": [
+    {
+      "from": "2027-01-01",
+      "version": "2027-01-01",
+      "models": {
+        "gemini-3.8-flash": {
+          "inputText": 1.5,
+          "inputImage": 1.5,
+          "outputText": 7.5
+        }
+      }
+    }
+  ]
 }

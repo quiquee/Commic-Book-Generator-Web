@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import jsPDF from 'jspdf';
-import { addSiteLink } from './pdfBranding';
+import { createComicPdf, pdfFileName } from './comicPdf';
+import { downloadSeriesPdf } from './seriesPdf';
 import { Book } from './Book';
 import { TOTAL_PAGES, type ComicFace } from './types';
 import { copyText, errorMessage, fetchPublicBaseUrl } from './invitations';
-import { copyStory, createReadLink, fetchSeries, fetchStoryDelta, findOwnerToken, keepStory, openStory, prefetchStory, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type CopiedStory, type StoryAuth, type StoryDocument } from './stories';
-import { seriesPosition, type SeriesNode, type SeriesTree } from './seriesLogic';
+import { comicOf, copyStory, createReadLink, fetchSeries, fetchStoryDelta, holdsKey, issueAuth, keepStory, openStory, prefetchStory, readLinkUrl, restartGeneration, submitChoice, updateInstructions, type CopiedStory, type StoryAuth, type StoryDocument } from './stories';
+import { finishedIssues, seriesPosition, type SeriesNode, type SeriesTree } from './seriesLogic';
 import { SeriesChooser } from './SeriesChooser';
 import { findFace, isStoryFinished, mergeFaces, pendingDecision, upsertFace } from './storyLogic';
 import { titleSlug } from './titles';
@@ -35,10 +35,6 @@ const SHEETS = Math.floor(TOTAL_PAGES / 2) + 1;
 // The series of the comic read last, so the next issue shows its place in the series while it loads.
 let lastTree: SeriesTree | null = null;
 
-const holdsKey = (node: SeriesNode) => node.mine || node.stories.some(id => !!findOwnerToken(id));
-// An issue is read from the reader's own comic when they have one of it.
-const comicOf = (node: SeriesNode) => node.stories.find(id => !!findOwnerToken(id)) ?? node.storyId;
-
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
 export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue, startAtEnd }: StoryViewProps) {
@@ -57,6 +53,8 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
     const [tree, setTree] = useState<SeriesTree | null>(() => lastTree?.nodes.some(node => node.stories.includes(storyId)) ? lastTree : null);
     // Which issues the chooser offers: the ones that continue this issue, or the other versions of it.
     const [choosing, setChoosing] = useState<'next' | 'versions' | null>(null);
+    // How far the PDF of the whole series is, while it is being put together.
+    const [seriesPdf, setSeriesPdf] = useState<{ done: number; total: number } | null>(null);
     const storyRef = useRef<StoryDocument | null>(null);
     const versionRef = useRef(0);
 
@@ -211,17 +209,22 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
 
     const downloadPDF = () => {
         if (!story) return;
-        const pages = story.faces.filter(face => face.imageUrl && !face.isLoading).sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0));
-        if (!pages.length) return;
-        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [480, 720] });
         const cast = story.guestName ? t('pdf.castPair', { host: story.hostName, guest: story.guestName }) : story.hostName;
-        doc.setProperties({ title: story.title, subject: t('pdf.subject', { cast }), author: story.hostName, creator: 'Mundos Cruzados' });
-        pages.forEach((face, index) => {
-            if (index > 0) doc.addPage([480, 720], 'portrait');
-            doc.addImage(face.imageUrl!, 'JPEG', 0, 0, 480, 720);
-            addSiteLink(doc, face.type, 480, 720, story.settings.language);
-        });
-        doc.save(`${titleSlug(story.title)}.pdf`);
+        const pdf = createComicPdf({ title: story.title, subject: t('pdf.subject', { cast }), author: story.hostName });
+        if (pdf.addIssue({ faces: story.faces, language: story.settings.language })) pdf.doc.save(pdfFileName(titleSlug(story.title)));
+    };
+
+    // Every finished issue of the branch being read, first issue first, in one PDF.
+    const downloadSeries = async () => {
+        if (!story || !tree || seriesPdf) return;
+        setSeriesPdf({ done: 0, total: seriesIssues.length });
+        try {
+            await downloadSeriesPdf(storyId, auth, { tree, current: story, onProgress: (done, total) => setSeriesPdf({ done, total }) });
+        } catch (failure) {
+            setError(t('series.pdfFailed', { reason: errorMessage(failure) }));
+        } finally {
+            setSeriesPdf(null);
+        }
     };
 
     // Shares a link anyone can open to read the comic (a reader re-shares the link they came with).
@@ -256,13 +259,10 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
 
     const position = tree ? seriesPosition(tree, storyId, holdsKey) : null;
     const finished = !!story && isStoryFinished(story.faces);
+    const seriesIssues = position ? finishedIssues(position) : [];
 
     // Another comic of the series opens with its own key when the reader has it, with this comic's key otherwise.
-    const authFor = useCallback((id: string): StoryAuth => {
-        const own = findOwnerToken(id);
-        if (own) return { kind: 'owner', token: own };
-        return auth.kind === 'owner' ? { kind: 'family', token: auth.token } : auth;
-    }, [auth]);
+    const authFor = useCallback((id: string): StoryAuth => issueAuth(auth, id), [auth]);
 
     const openIssue = (node: SeriesNode, atEnd = false) => {
         if (!onOpenIssue) return;
@@ -359,8 +359,8 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
                 {notice && <p role="status" className="pointer-events-auto text-sm bg-white border-2 border-black px-3 py-1">{notice} <button type="button" className="underline ml-1" onClick={() => setNotice('')}>{t('common.close')}</button></p>}
                 {isOwner && story?.generation?.state === 'stopped' && (
                     <div className="pointer-events-auto flex flex-wrap justify-center gap-2 mt-2">
-                        <button type="button" onClick={openInstructions} className="comic-btn bg-red-500 text-white px-3 py-2 text-lg">{t('view.editInstructions')}</button>
-                        <button type="button" onClick={retry} className="comic-btn bg-yellow-400 px-3 py-2 text-lg">{t('view.retry')}</button>
+                        <button type="button" onClick={openInstructions} className="comic-btn btn-blue px-3 py-2 text-lg">{t('view.editInstructions')}</button>
+                        <button type="button" onClick={retry} className="comic-btn btn-primary px-3 py-2 text-lg">{t('view.retry')}</button>
                     </div>
                 )}
                 {error && <p role="alert" className="pointer-events-auto text-sm bg-white border-2 border-red-800 text-red-800 px-3 py-1">{error} <button type="button" className="underline ml-1" onClick={() => setError('')}>{t('common.close')}</button></p>}
@@ -374,6 +374,8 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
                 onChoice={choose}
                 onOpenBook={() => setCurrentSheetIndex(1)}
                 onDownload={downloadPDF}
+                onDownloadSeries={seriesIssues.length > 1 ? downloadSeries : undefined}
+                downloadSeriesLabel={seriesPdf ? t('series.pdfProgress', seriesPdf) : t('panel.downloadSeries', { count: seriesIssues.length })}
                 onReset={() => setShowCredits(true)}
                 onShare={isOwner || story.role === 'guest' || auth.kind === 'reader' ? shareLink : undefined}
                 onSaveCopy={!isOwner && onCopied && finished ? saveCopy : undefined}
@@ -396,8 +398,8 @@ export function StoryView({ storyId, auth, onExit, onCopied, onMood, onOpenIssue
                         <textarea aria-label={t('view.instructionsLabel')} value={draft} onChange={event => setDraft(event.target.value)}
                             maxLength={2000} rows={6} autoFocus className="border-2 border-black p-2 w-full" />
                         <div className="flex justify-end gap-2">
-                            <button type="button" onClick={() => setEditing(false)} className="comic-btn bg-gray-200 px-3 py-2">{t('view.instructionsCancel')}</button>
-                            <button type="submit" disabled={saving || (story?.settings.genre === 'Custom' && !draft.trim())} className="comic-btn bg-yellow-400 px-3 py-2 disabled:bg-gray-400">{t('view.instructionsSave')}</button>
+                            <button type="button" onClick={() => setEditing(false)} className="comic-btn btn-white px-3 py-2">{t('view.instructionsCancel')}</button>
+                            <button type="submit" disabled={saving || (story?.settings.genre === 'Custom' && !draft.trim())} className="comic-btn btn-primary px-3 py-2">{t('view.instructionsSave')}</button>
                         </div>
                     </form>
                 </div>

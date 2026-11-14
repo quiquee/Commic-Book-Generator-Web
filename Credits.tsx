@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { t } from './i18n';
+import { Logotype } from './Logotype';
 
 const DURATION_MS = 10_000;
 const COMPANY = 'HCPartners Sàrl';
@@ -36,15 +37,13 @@ export function Credits({ onDone }: CreditsProps) {
         // Above every other layer, including the fixed "Main menu" button, so it cannot be skipped.
         <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-labelledby="credits-title">
             <div className="max-w-lg w-full bg-white border-[6px] border-black shadow-[12px_12px_0px_rgba(0,0,0,0.6)] p-6 text-center rotate-1">
-                <h1 id="credits-title" className="font-comic text-5xl leading-none mb-6" style={{ textShadow: '2px 2px 0px black' }}>
-                    <span className="text-red-600">MUNDOS</span> <span className="text-yellow-400">CRUZADOS</span>
-                </h1>
+                <h1 id="credits-title" className="brand-banner -mx-6 -mt-6 mb-6 px-3 py-4 border-b-[6px] border-black text-4xl sm:text-5xl"><Logotype /></h1>
                 <p className="text-lg mb-4">
                     {t('credits.builtBy')}{' '}
                     <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline">{COMPANY}</a>
                     {' '}© {new Date().getFullYear()}
                 </p>
-                <a href="/" className="comic-btn inline-block bg-red-600 text-white text-2xl px-6 py-3 mb-6">{t('credits.createOwn')}</a>
+                <a href="/" className="comic-btn inline-block btn-primary text-2xl px-6 py-3 mb-6">{t('credits.createOwn')}</a>
                 <div role="progressbar" aria-label={t('credits.progress')} aria-valuemin={0} aria-valuemax={10} aria-valuenow={remaining}
                     className="h-4 w-full border-2 border-black bg-gray-200 overflow-hidden">
                     <div className="h-full bg-yellow-400" style={{ width: `${percent}%` }} />

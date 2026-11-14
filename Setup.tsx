@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GENRES, LANGUAGES, Persona } from './types';
 import { t, type MessageKey } from './i18n';
+import { Logotype } from './Logotype';
 
 const GENRE_KEYS: Record<string, MessageKey> = {
     'Classic Horror': 'genre.horror',
@@ -73,7 +74,7 @@ const StoryPicker: React.FC<StoryPickerProps> = ({ selectedGenre, customPremise,
                 <div role="radiogroup" aria-label={t('story.genreLabel')} className="grid grid-cols-2 gap-1">
                     {genres.map(g => (
                         <button key={g} type="button" role="radio" aria-checked={g === selectedGenre} onClick={() => onGenreChange(g)}
-                            className={`border-2 border-black px-2 py-1 text-left text-sm font-bold ${g === selectedGenre ? 'bg-red-600 text-white' : 'bg-white text-black hover:bg-yellow-100'}`}>
+                            className={`border-2 border-black px-2 py-1 text-left text-sm font-bold ${g === selectedGenre ? 'bg-brand-blue text-white' : 'bg-white text-black hover:bg-yellow-100'}`}>
                             {GENRE_ICONS[g]} {genreLabel(g)}
                         </button>
                     ))}
@@ -134,7 +135,7 @@ const Footer = () => {
   }, []);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-black text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center z-[300] border-t-4 border-yellow-400 font-comic">
+    <div className="fixed bottom-0 left-0 right-0 bg-black text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center z-[300] border-t-4 border-brand-orange font-comic">
         <div className="flex items-center gap-2 text-lg md:text-xl">
             <span className="text-yellow-400 font-bold">{t('footer.idea')}</span>
             <span className="animate-pulse">{t(remixes[remixIndex])}</span>
@@ -167,15 +168,15 @@ export const Setup: React.FC<SetupProps> = (props) => {
         {props.isTransitioning && (
             <div className="fixed top-1/2 left-1/2 z-[210] pointer-events-none" style={{ animation: 'pow-enter 1s forwards ease-out' }}>
                 <svg viewBox="0 0 200 150" className="w-[500px] h-[400px] drop-shadow-[0_10px_0_rgba(0,0,0,0.5)]">
-                    <path d="M95.7,12.8 L110.2,48.5 L148.5,45.2 L125.6,74.3 L156.8,96.8 L119.4,105.5 L122.7,143.8 L92.5,118.6 L60.3,139.7 L72.1,103.2 L34.5,108.8 L59.9,79.9 L24.7,57.3 L62.5,54.4 L61.2,16.5 z" fill="#FFD700" stroke="black" strokeWidth="4"/>
-                    <text x="100" y="95" textAnchor="middle" fontFamily="'Bangers', cursive" fontSize="70" fill="#DC2626" stroke="black" strokeWidth="2" transform="rotate(-5 100 75)">POW!</text>
+                    <path d="M95.7,12.8 L110.2,48.5 L148.5,45.2 L125.6,74.3 L156.8,96.8 L119.4,105.5 L122.7,143.8 L92.5,118.6 L60.3,139.7 L72.1,103.2 L34.5,108.8 L59.9,79.9 L24.7,57.3 L62.5,54.4 L61.2,16.5 z" fill="#ffd60a" stroke="#050f2c" strokeWidth="4"/>
+                    <text x="100" y="95" textAnchor="middle" fontFamily="'Bangers', cursive" fontSize="70" fill="#f25c05" stroke="#050f2c" strokeWidth="2" transform="rotate(-5 100 75)">POW!</text>
                 </svg>
             </div>
         )}
         
         <div id="setup-scroll" className={`fixed inset-0 z-[200] overflow-y-auto`}
              style={{
-                 background: props.isTransitioning ? 'transparent' : 'rgba(0,0,0,0.85)', 
+                 background: props.isTransitioning ? 'transparent' : 'rgba(1,18,46,0.78)', 
                  backdropFilter: props.isTransitioning ? 'none' : 'blur(6px)',
                  animation: props.isTransitioning ? 'knockout-exit 1s forwards cubic-bezier(.6,-0.28,.74,.05)' : 'none',
                  pointerEvents: props.isTransitioning ? 'none' : 'auto'
@@ -184,9 +185,11 @@ export const Setup: React.FC<SetupProps> = (props) => {
             {/* Compacted width and internal spacing */}
             <div className="max-w-[900px] w-full bg-white p-4 md:p-5 rotate-1 border-[6px] border-black shadow-[12px_12px_0px_rgba(0,0,0,0.6)] text-center relative">
                 
-                <h1 className="font-comic text-5xl text-red-600 leading-none mb-1 tracking-wide inline-block mr-3" style={{textShadow: '2px 2px 0px black'}}>MUNDOS</h1>
-                <h1 className="font-comic text-5xl text-yellow-400 leading-none mb-4 tracking-wide inline-block" style={{textShadow: '2px 2px 0px black'}}>CRUZADOS</h1>
-                <span title={t('app.betaHint')} className="font-comic text-base bg-black text-yellow-300 border-2 border-yellow-400 px-2 py-0.5 ml-2 align-top inline-block rotate-6">BETA</span>
+                <div className="brand-banner -mx-4 -mt-4 md:-mx-5 md:-mt-5 mb-4 px-2 py-3 border-b-[6px] border-black flex items-center justify-center gap-2 sm:gap-3">
+                    <img src="/logo.jpg" alt="" width={64} height={64} className="w-11 h-11 sm:w-16 sm:h-16 rounded-xl border-2 border-brand-yellow" />
+                    <h1 className="text-3xl sm:text-5xl"><Logotype /></h1>
+                    <span title={t('app.betaHint')} className="font-comic text-xs sm:text-base bg-brand-yellow text-black border-2 border-black px-1.5 sm:px-2 py-0.5 self-start inline-block rotate-6">BETA</span>
+                </div>
                 {props.banner}
                 
                 <div className="flex flex-col md:flex-row gap-4 mb-4 text-left">
@@ -196,7 +199,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                         <div className="font-comic text-xl text-black border-b-4 border-black mb-1">{t('setup.cast')}</div>
                         
                         {/* HERO UPLOAD */}
-                        <div className={`p-3 border-4 border-dashed ${props.hero ? 'border-green-500 bg-green-50' : 'border-blue-300 bg-blue-50'} transition-colors relative group`}>
+                        <div className={`p-3 border-4 ${props.hero ? 'border-solid border-brand-blue bg-blue-50' : 'border-dashed border-blue-300 bg-blue-50'} transition-colors relative group`}>
                             <div className="flex justify-between items-center mb-1">
                                 <p className="font-comic text-lg uppercase font-bold text-blue-900">{props.guestMode ? t('setup.invitedBy', { name: props.hostName ?? '' }) : t('setup.heroRequired')}</p>
                                 {props.hero && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ {t('common.ready')}</span>}
@@ -207,14 +210,14 @@ export const Setup: React.FC<SetupProps> = (props) => {
                                      <img src={`data:image/jpeg;base64,${props.hero.base64}`} alt={t('setup.heroPreview')} className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[-2deg]" />
                                      <div className="flex flex-col items-start gap-1 min-w-0">
                                      {props.heroName && <p className="font-comic text-lg leading-tight break-words max-w-full">{props.heroName}</p>}
-                                     {!props.guestMode && <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 hover:bg-yellow-300 transition-transform active:scale-95 uppercase">
+                                     {!props.guestMode && <label className="cursor-pointer comic-btn btn-yellow text-sm px-3 py-1 transition-transform active:scale-95 uppercase">
                                          {t('common.replace')}
                                          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onHeroUpload(e.target.files[0])} />
                                      </label>}
                                      </div>
                                 </div>
                             ) : (
-                                <label className="comic-btn bg-blue-500 text-white text-lg px-3 py-3 block w-full hover:bg-blue-400 cursor-pointer text-center">
+                                <label className="comic-btn btn-blue text-lg px-3 py-3 block w-full cursor-pointer text-center">
                                     {t('setup.uploadHero')}
                                     <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onHeroUpload(e.target.files[0])} />
                                 </label>
@@ -222,22 +225,22 @@ export const Setup: React.FC<SetupProps> = (props) => {
                         </div>
 
                         {/* CO-STAR UPLOAD */}
-                        {props.coStarSlot ?? <div className={`p-3 border-4 border-dashed ${props.friend ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
+                        {props.coStarSlot ?? <div className={`p-3 border-4 ${props.friend ? 'border-solid border-brand-orange bg-orange-50' : 'border-dashed border-orange-300 bg-orange-50'} transition-colors`}>
                             <div className="flex justify-between items-center mb-1">
-                                <p className="font-comic text-lg uppercase font-bold text-purple-900">{props.guestMode ? t('setup.yourPhoto', { name: props.guestName ?? '' }) : t('setup.costarOptional')}</p>
+                                <p className="font-comic text-lg uppercase font-bold text-orange-900">{props.guestMode ? t('setup.yourPhoto', { name: props.guestName ?? '' }) : t('setup.costarOptional')}</p>
                                 {props.friend && <span className="text-green-600 font-bold font-comic text-sm animate-pulse">✓ {t('common.ready')}</span>}
                             </div>
 
                             {props.friend ? (
                                 <div className="flex gap-3 items-center mt-1">
                                     <img src={`data:image/jpeg;base64,${props.friend.base64}`} alt={t('setup.costarPreview')} className="w-20 h-20 object-cover border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,0.2)] bg-white rotate-[2deg]" />
-                                    {!props.friendPhotoLocked && <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 hover:bg-yellow-300 transition-transform active:scale-95 uppercase">
+                                    {!props.friendPhotoLocked && <label className="cursor-pointer comic-btn btn-yellow text-sm px-3 py-1 transition-transform active:scale-95 uppercase">
                                         {t('common.replace')}
                                         <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && props.onFriendUpload(e.target.files[0])} />
                                     </label>}
                                 </div>
                             ) : (
-                                <label className="comic-btn bg-purple-500 text-white text-lg px-3 py-3 block w-full hover:bg-purple-400 cursor-pointer text-center">
+                                <label className="comic-btn btn-primary text-lg px-3 py-3 block w-full cursor-pointer text-center">
                                     {t('setup.uploadCostar')}
                                     <input type="file" accept="image/*" disabled={props.friendPhotoLocked} className="hidden" onChange={(e) => e.target.files?.[0] && props.onFriendUpload(e.target.files[0])} />
                                 </label>
@@ -253,7 +256,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                     {/* Right Column: Settings */}
                     <div className="flex-1 flex flex-col gap-2 min-w-0">
                         <div className="font-comic text-xl text-black border-b-4 border-black mb-1">{t('setup.story')}</div>
-                        {props.storyLockedReason && !props.guestMode && <p role="note" className="text-xs bg-purple-100 border-2 border-purple-400 p-1">🔒 {props.storyLockedReason}</p>}
+                        {props.storyLockedReason && !props.guestMode && <p role="note" className="text-xs bg-orange-100 border-2 border-orange-400 p-1">🔒 {props.storyLockedReason}</p>}
 
                         {/* Title stays editable even when the story settings are locked by an invitation. */}
                         <div className="bg-yellow-50 p-3 border-4 border-black h-full flex flex-col justify-between">
@@ -290,7 +293,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
                 </div>
 
                 {props.children}
-                <button onClick={props.onLaunch} disabled={!props.hero || props.isTransitioning || props.launchDisabled} className="comic-btn bg-red-600 text-white text-3xl px-6 py-3 w-full hover:bg-red-500 disabled:bg-gray-400 disabled:cursor-not-allowed uppercase tracking-wider">
+                <button onClick={props.onLaunch} disabled={!props.hero || props.isTransitioning || props.launchDisabled} className="comic-btn btn-primary text-3xl px-6 py-3 w-full disabled:cursor-not-allowed uppercase tracking-wider">
                     {props.launchLabel || (props.isTransitioning ? t('launch.going') : t('launch.start'))}
                 </button>
                 {props.belowLaunch && <div className="mt-5">{props.belowLaunch}</div>}

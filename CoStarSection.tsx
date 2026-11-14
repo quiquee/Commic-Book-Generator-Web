@@ -76,8 +76,8 @@ function ShareInvitation({ url, hostName, guestName }: { url: string; hostName: 
     return (
         <div>
             <div className="flex flex-wrap gap-2">
-                {canShare && <button type="button" onClick={share} className="comic-btn bg-purple-600 text-white px-3 py-2 text-base">{t('share.share')}</button>}
-                <button type="button" onClick={copy} className="comic-btn bg-yellow-400 text-black px-3 py-2 text-base">{copied ? t('share.copied') : t('share.copy')}</button>
+                {canShare && <button type="button" onClick={share} className="comic-btn btn-blue px-3 py-2 text-base">{t('share.share')}</button>}
+                <button type="button" onClick={copy} className="comic-btn btn-yellow px-3 py-2 text-base">{copied ? t('share.copied') : t('share.copy')}</button>
                 <a href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`} target="_blank" rel="noopener noreferrer" className="comic-btn bg-green-500 text-black px-3 py-2 text-base inline-block">WhatsApp</a>
             </div>
             {error && <p role="alert" className="text-red-700 text-sm mt-1">{error}</p>}
@@ -211,13 +211,13 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
     try { if (activeKey) url = invitationUrl(baseUrl, activeKey); } catch { /* reported below */ }
 
     return (
-        <div className={`p-3 border-4 border-dashed ${ready ? 'border-green-500 bg-green-50' : 'border-purple-300 bg-purple-50'} transition-colors`}>
-            <p className="font-comic text-lg uppercase font-bold text-purple-900 mb-1">{t('cast.costar')}</p>
+        <div className={`p-3 border-4 ${ready ? 'border-solid border-brand-orange bg-orange-50' : 'border-dashed border-orange-300 bg-orange-50'} transition-colors`}>
+            <p className="font-comic text-lg uppercase font-bold text-orange-900 mb-1">{t('cast.costar')}</p>
             <div role="radiogroup" aria-label={t('cast.costar')} className="grid grid-cols-3 gap-1 mb-2">
                 {MODES.map(option => (
                     <button key={option.value} type="button" role="radio" aria-checked={mode === option.value}
                         onClick={() => onModeChange(option.value)}
-                        className={`border-2 border-black px-1 py-1 leading-tight ${mode === option.value ? 'bg-purple-600 text-white shadow-none' : 'bg-white text-black shadow-[2px_2px_0px_black] hover:bg-purple-100'}`}>
+                        className={`border-2 border-black px-1 py-1 leading-tight ${mode === option.value ? 'bg-brand-orange text-black shadow-none' : 'bg-white text-black shadow-[2px_2px_0px_black] hover:bg-orange-100'}`}>
                         <span className="font-comic text-base block">{t(option.label)}</span>
                         <span className="text-[11px] block">{t(option.hint)}</span>
                     </button>
@@ -232,7 +232,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
                     <div className="text-sm min-w-0">
                         {friendName && <p className="font-comic text-lg leading-tight break-words">{friendName}</p>}
                         <p className="text-green-700 font-bold font-comic">✓ {t('common.ready')}</p>
-                        <label className="cursor-pointer comic-btn bg-yellow-400 text-black text-sm px-3 py-1 inline-block mt-1">
+                        <label className="cursor-pointer comic-btn btn-yellow text-sm px-3 py-1 inline-block mt-1">
                             {t('common.replace')}
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onFriendUpload(e.target.files[0])} />
                         </label>
@@ -241,7 +241,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
             ) : (
                 <>
                     <p className="text-sm mb-2">{t('costar.photoText')}</p>
-                    <label className="comic-btn bg-purple-500 text-white text-lg px-3 py-2 block w-full cursor-pointer text-center">
+                    <label className="comic-btn btn-primary text-lg px-3 py-2 block w-full cursor-pointer text-center">
                         {t('costar.uploadTheirPhoto')}
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onFriendUpload(e.target.files[0])} />
                     </label>
@@ -259,7 +259,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
                             <input maxLength={80} value={guestName} onChange={event => setGuestName(event.target.value)} className="block w-full border-2 border-black p-1 bg-white font-normal" />
                         </label>
                     </div>
-                    <button type="button" onClick={createInvitation} disabled={busy || !hero} className="comic-btn bg-purple-600 text-white px-3 py-2 mt-2 w-full disabled:bg-gray-400">
+                    <button type="button" onClick={createInvitation} disabled={busy || !hero} className="comic-btn btn-primary px-3 py-2 mt-2 w-full">
                         {busy ? t('invite.creating') : t('invite.create')}
                     </button>
                     {!hero && <p className="text-xs mt-1">{t('invite.heroFirst')}</p>}
@@ -270,7 +270,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
                                 {others.map(item => (
                                     <li key={item.id} className="flex items-center gap-2 border-2 border-black bg-white px-2 py-1">
                                         <span className="flex-1 text-sm"><strong>{item.guestName}</strong> · {joinedName(item)}</span>
-                                        <button type="button" onClick={() => select(item.id)} className="comic-btn bg-purple-500 text-white text-sm px-2 py-0.5">{t('invite.use')}</button>
+                                        <button type="button" onClick={() => select(item.id)} className="comic-btn btn-blue text-sm px-2 py-0.5">{t('invite.use')}</button>
                                         <button type="button" onClick={() => forgetInvitation(item.id)} className="underline text-xs">{t('invite.remove')}</button>
                                     </li>
                                 ))}
@@ -293,7 +293,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
                             {url ? <ShareInvitation url={url} hostName={active.hostName} guestName={active.guestName} />
                                 : <p role="alert" className="text-red-700 text-sm">{t('invite.badBaseUrl')}</p>}
                             {isLoopbackUrl(baseUrl) && <p role="note" className="text-xs mt-1 text-amber-800">{t('invite.localhost')}</p>}
-                            <p role="status" className="font-bold text-purple-900 mt-2 animate-pulse">⏳ {t('invite.waitingFor', { name: active.guestName })}</p>
+                            <p role="status" className="font-bold text-orange-900 mt-2 animate-pulse">⏳ {t('invite.waitingFor', { name: active.guestName })}</p>
                         </> : <>
                             <div className="flex gap-3 items-center mt-1">
                                 <img src={`data:image/jpeg;base64,${response.persona.base64}`} alt={t('invite.photoOf', { name: response.name })} className="w-20 h-20 object-cover border-2 border-black rotate-[2deg]" />
@@ -305,7 +305,7 @@ export function CoStarSection({ mode, onModeChange, hero, friend, friendName, he
                                     <div className="flex gap-2 mt-1">
                                         {active.responses.map(item => (
                                             <button key={item.id} type="button" aria-pressed={item.id === response.id} onClick={() => setChosenResponseId(item.id)}
-                                                className={`border-4 ${item.id === response.id ? 'border-green-600' : 'border-transparent'}`}>
+                                                className={`border-4 ${item.id === response.id ? 'border-brand-orange' : 'border-transparent'}`}>
                                                 <img src={`data:image/jpeg;base64,${item.persona.base64}`} alt={t('invite.photoNumber', { number: active.responses.indexOf(item) + 1 })} className="w-12 h-12 object-cover" />
                                             </button>
                                         ))}

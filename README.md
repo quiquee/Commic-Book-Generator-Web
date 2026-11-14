@@ -198,14 +198,29 @@ por IP, solo admite los modelos de `GEMINI_ALLOWED_MODELS` y el método
 `generateContent`. Gemini no tiene «créditos»: la unidad es tokens y un coste
 **estimado**.
 
-**Tarifas.** Para ver costes crea `.data/pricing.json` siguiendo
-[pricing.example.json](pricing.example.json) con las tarifas vigentes de tu
-plan (USD por millón de tokens y modelo, según la documentación oficial de
-Gemini). No se incluyen precios por defecto: sin tarifa se muestran tokens y el
-coste aparece como «sin tarifa». El coste se calcula al registrar cada llamada
-y guarda la versión de tarifa, de modo que el histórico no cambia si las
-tarifas cambian. Estimación aproximada: se ignora el descuento por tokens en
-caché.
+**Tarifas.** Para ver costes crea `.data/pricing.json` a partir de
+[pricing.example.json](pricing.example.json)
+(`cp pricing.example.json .data/pricing.json`): USD por millón de tokens y
+modelo, según la [documentación oficial de Gemini](https://ai.google.dev/gemini-api/docs/pricing).
+El ejemplo trae las tarifas del nivel de pago estándar leídas en la fecha de su
+`version`; compruébalas antes de usarlas. Sin ese archivo se muestran tokens y
+el coste aparece como «sin tarifa». El archivo se relee al cambiar, sin
+reiniciar el servidor.
+
+- `changes` (opcional) anuncia cambios de precio con fecha: cada entrada
+  `{ "from": "AAAA-MM-DD", "version": "...", "models": { ... } }` sustituye,
+  desde ese día (UTC), las tarifas completas de los modelos que nombra.
+- El coste se calcula al registrar cada llamada y guarda la versión de tarifa,
+  de modo que el histórico no cambia si las tarifas cambian.
+- Las llamadas registradas cuando no había tarifa quedan «sin tarifa». El
+  resumen de `/admin` las cuenta y ofrece **Aplicarles las tarifas**, que les
+  pone el coste con la tarifa del día de cada llamada (solo a las que no lo
+  tienen y cuyo detalle se conserva: las 500 últimas de cada cómic).
+- El resumen de `/admin` muestra las tarifas vigentes y los cambios anunciados.
+- Es una estimación a precio de tarifa: ignora el descuento por tokens en
+  caché y los créditos o descuentos de la factura de Google. Una suscripción
+  Google AI Pro no cambia estas tarifas: el uso de la API con clave se factura
+  aparte.
 
 **Límites.** `GEMINI_DAILY_BUDGET_USD` y `GEMINI_DAILY_TOKEN_LIMIT` (día UTC)
 detienen las llamadas con el mensaje «LIMITE_DE_CONSUMO»; la generación del

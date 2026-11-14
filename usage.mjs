@@ -8,6 +8,32 @@ const number = (value) => typeof value === 'number' && Number.isFinite(value) &&
 const emptyTokens = () => Object.fromEntries(tokenKeys.map((key) => [key, 0]));
 const emptyTotals = () => ({ calls: 0, errors: 0, tokens: emptyTokens(), costUsd: 0, uncostedCalls: 0 });
 const dayKey = (time = Date.now()) => new Date(time).toISOString().slice(0, 10);
+const isTable = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * A price file: the rates in force, and optionally dated `changes`. Each change replaces, from its day (UTC) on,
+ * the rates of the models it names. Returns null when the file is not usable.
+ */
+function validPricing(candidate) {
+  if (candidate?.currency !== 'USD' || typeof candidate.version !== 'string' || !isTable(candidate.models)) return null;
+  const changes = candidate.changes ?? [];
+  if (!Array.isArray(changes) || !changes.every((change) => isTable(change) && typeof change.from === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(change.from) && isTable(change.models)
+    && (change.version === undefined || typeof change.version === 'string'))) return null;
+  return { ...candidate, changes: [...changes].sort((a, b) => a.from.localeCompare(b.from)) };
+}
+
+/** The rates in force on a day, with the version they belong to. */
+function pricesOn(prices, day = dayKey()) {
+  if (!prices) return null;
+  const table = { version: prices.version, models: { ...prices.models } };
+  for (const change of prices.changes) {
+    if (change.from > day) break;
+    Object.assign(table.models, change.models);
+    table.version = change.version ?? change.from;
+  }
+  return table;
+}
 
 /** Normalize Gemini counters without counting modality details twice. */
 export function normalizeUsage(response, ok = true) {
@@ -163,8 +189,7 @@ export function createUsageStore({ usageDir, pricingFile }) {
       const stamp = `${info.mtimeNs}:${info.size}:${info.ino}`;
       if (stamp !== pricingStamp) {
         const candidate = JSON.parse(await readFile(pricingFile, 'utf8'));
-        pricing = candidate?.currency === 'USD' && typeof candidate.version === 'string'
-          && candidate.models && typeof candidate.models === 'object' && !Array.isArray(candidate.models) ? candidate : null;
+        pricing = validPricing(candidate);
         pricingStamp = stamp;
       }
     } catch {
@@ -202,7 +227,7 @@ export function createUsageStore({ usageDir, pricingFile }) {
         }
         const ok = event.ok === true;
         const normalized = normalizeUsage(event.response, ok);
-        const prices = await readPricing();
+        const prices = pricesOn(await readPricing());
         const costUsd = ok ? costFor(normalized.tokens, model, prices) : 0;
         const timestamp = new Date().toISOString();
         const entry = { model, op, ok, httpStatus: number(event.httpStatus), latencyMs: number(event.latencyMs),
@@ -280,8 +305,45 @@ export function createUsageStore({ usageDir, pricingFile }) {
     pricingStatus() {
       return run(async () => {
         const prices = await readPricing();
-        return { pricingConfigured: !!prices, pricingVersion: prices?.version ?? null };
+        const today = dayKey();
+        const current = pricesOn(prices, today);
+        return { pricingConfigured: !!prices, pricingVersion: current?.version ?? null,
+          pricingModels: current?.models ?? {},
+          pricingChanges: (prices?.changes ?? []).filter((change) => change.from > today)
+            .map((change) => ({ from: change.from, version: change.version ?? change.from, models: change.models })) };
       });
+    },
+    /**
+     * Gives a cost to the successful calls recorded while no rate applied to them, at the rates of the day of each
+     * call. Calls that already have a cost are left alone. Only calls whose details are still stored can be priced.
+     */
+    priceUncosted() {
+      return run(async (next) => {
+        const prices = await readPricing();
+        const result = { priced: 0, costUsd: 0, remaining: 0 };
+        for (const record of prices ? [...Object.values(next.stories), ...Object.values(next.drafts)] : []) {
+          for (const entry of record.events ?? []) {
+            if (!entry.ok || entry.costUsd !== null) continue;
+            const day = entry.ts.slice(0, 10);
+            const table = pricesOn(prices, day);
+            const cost = costFor(entry.tokens, entry.model, table);
+            if (cost === null) continue;
+            entry.costUsd = cost;
+            entry.priceVersion = table.version;
+            const own = (group, key) => Object.hasOwn(group, key) ? group[key] : null;
+            for (const totals of [record.totals, own(record.byOperation, entry.op), own(record.byModel, entry.model),
+              next.totals, own(next.daily, day)]) {
+              if (!totals) continue;
+              totals.costUsd += cost;
+              totals.uncostedCalls = Math.max(0, totals.uncostedCalls - 1);
+            }
+            result.priced += 1;
+            result.costUsd += cost;
+          }
+        }
+        result.remaining = next.totals.uncostedCalls;
+        return result;
+      }, true);
     },
   };
 }

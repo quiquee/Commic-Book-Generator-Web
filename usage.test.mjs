@@ -124,19 +124,84 @@ test('queues writes, prices counters, preserves failures and blocked calls, priv
 test('re-reads pricing, requires only used rates, ignores cached pricing and counts uncosted successes', async (t) => {
   const { usage, options } = await fixture(t);
   const scope = { type: 'draft', id: 'draft' };
-  assert.deepEqual(await usage.pricingStatus(), { pricingConfigured: true, pricingVersion: 'v1' });
+  assert.deepEqual(await usage.pricingStatus(), { pricingConfigured: true, pricingVersion: 'v1',
+    pricingModels: priceData.models, pricingChanges: [] });
   await writeFile(options.pricingFile, JSON.stringify({ version: 'text-only', currency: 'USD',
     models: { [model]: { inputText: 2, outputText: 4 } } }));
   const first = await usage.record(scope, event({ usageMetadata: { ...textResponse.usageMetadata, cachedContentTokenCount: 100 } }));
   assert.ok(Math.abs(first.costUsd - (14 * 2 + 833 * 4) / 1e6) < 1e-12);
   assert.equal((await usage.record(scope, event(imageResponse))).costUsd, null);
   await writeFile(options.pricingFile, '{"invalid":true}');
-  assert.deepEqual(await usage.pricingStatus(), { pricingConfigured: false, pricingVersion: null });
+  assert.deepEqual(await usage.pricingStatus(), { pricingConfigured: false, pricingVersion: null, pricingModels: {}, pricingChanges: [] });
   assert.equal((await usage.record(scope, event())).costUsd, null);
   await usage.record(scope, event(textResponse, { ok: false }));
   assert.equal((await usage.getDraft('draft')).totals.uncostedCalls, 2);
   await rm(options.pricingFile);
   assert.equal((await usage.pricingStatus()).pricingConfigured, false);
+});
+
+test('dated price changes apply from their day and are listed while still to come', async (t) => {
+  const { usage, options } = await fixture(t);
+  const later = { [model]: { inputText: 10, outputText: 30 } };
+  const future = { [model]: { inputText: 100, outputText: 300 } };
+  await writeFile(options.pricingFile, JSON.stringify({ ...priceData, changes: [
+    { from: '2999-01-01', models: future }, { from: '2000-01-01', version: 'v2', models: later }] }));
+  assert.deepEqual(await usage.pricingStatus(), { pricingConfigured: true, pricingVersion: 'v2', pricingModels: later,
+    pricingChanges: [{ from: '2999-01-01', version: '2999-01-01', models: future }] });
+  const entry = await usage.record({ type: 'story', id: 'one' }, event());
+  assert.ok(Math.abs(entry.costUsd - (14 * 10 + 833 * 30) / 1e6) < 1e-12);
+  assert.equal(entry.priceVersion, 'v2');
+  // The change replaces the model's rates whole: it has no rate for images, so an image call has no cost.
+  assert.equal((await usage.record({ type: 'story', id: 'one' }, event(imageResponse))).costUsd, null);
+  for (const changes of [[{ from: 'soon', models: later }], [{ from: '2027-01-01' }], 'none', [{ from: '2027-01-01', models: later, version: 2 }]]) {
+    await writeFile(options.pricingFile, JSON.stringify({ ...priceData, changes }));
+    assert.equal((await usage.pricingStatus()).pricingConfigured, false, JSON.stringify(changes));
+  }
+});
+
+test('calls recorded without a price get one later, once, and priced calls keep theirs', async (t) => {
+  const { usage, options } = await fixture(t);
+  const story = { type: 'story', id: 'one' };
+  const textCost = (14 + 833 * 3) / 1e6;
+  const imageCost = (43 + 1695 * 3 + 1120 * 4) / 1e6;
+  const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} != ${expected}`);
+  await usage.record(story, event());
+  await writeFile(options.pricingFile, JSON.stringify({ ...priceData, models: {} }));
+  await usage.record(story, event());
+  await usage.record(story, event(imageResponse));
+  await usage.record(story, event(textResponse, { ok: false, httpStatus: 500 }));
+  await usage.record(story, event(textResponse, { model: 'other-model', op: 'constructor' }));
+  await usage.record({ type: 'draft', id: 'draft' }, event());
+  assert.equal((await usage.overview()).totals.uncostedCalls, 4);
+  assert.deepEqual(await usage.priceUncosted(), { priced: 0, costUsd: 0, remaining: 4 });
+  await rm(options.pricingFile);
+  assert.deepEqual(await usage.priceUncosted(), { priced: 0, costUsd: 0, remaining: 4 });
+
+  // Ten times the first prices: only the calls without a cost take them.
+  const tenfold = { version: 'v10', currency: 'USD', models: { [model]: { inputText: 10, inputImage: 20, outputText: 30, outputImage: 40 } } };
+  await writeFile(options.pricingFile, JSON.stringify(tenfold));
+  const result = await usage.priceUncosted();
+  assert.equal(result.priced, 3);
+  assert.equal(result.remaining, 1);
+  near(result.costUsd, 10 * (2 * textCost + imageCost));
+  const record = await usage.getStory('one');
+  near(record.totals.costUsd, textCost + 10 * (textCost + imageCost));
+  assert.equal(record.totals.uncostedCalls, 1);
+  assert.deepEqual(record.events.map((entry) => entry.priceVersion), ['v1', 'v10', 'v10', 'v1', null]);
+  assert.equal(record.events[3].costUsd, 0);
+  assert.equal(record.events[4].costUsd, null);
+  assert.equal(record.byModel[model].uncostedCalls, 0);
+  near(record.byModel[model].costUsd, record.totals.costUsd);
+  assert.equal(record.byModel['other-model'].uncostedCalls, 1);
+  assert.equal(record.byOperation.constructor.uncostedCalls, 1);
+  near(record.byOperation['story:1'].costUsd, record.totals.costUsd);
+  near((await usage.getDraft('draft')).totals.costUsd, 10 * textCost);
+  const overview = await usage.overview();
+  near(overview.totals.costUsd, textCost + 10 * (2 * textCost + imageCost));
+  near(overview.today.costUsd, overview.totals.costUsd);
+  assert.equal(overview.today.uncostedCalls, 1);
+  assert.deepEqual(await usage.priceUncosted(), { priced: 0, costUsd: 0, remaining: 1 });
+  near((await createUsageStore(options).overview()).totals.costUsd, overview.totals.costUsd);
 });
 
 test('adoption is persisted and idempotent, redirects late records, never recounts daily and preserves deletion snapshot', async (t) => {

@@ -14,6 +14,9 @@ interface PanelProps {
     onChoice: (pageIndex: number, choice: string) => void;
     onOpenBook: () => void;
     onDownload: () => void;
+    // Downloads every issue of the series in one PDF (only offered when there are several).
+    onDownloadSeries?: () => void;
+    downloadSeriesLabel?: string;
     onReset: () => void;
     onShare?: () => void;
     onSaveCopy?: () => void;
@@ -30,7 +33,7 @@ interface PanelProps {
     comicLanguage?: string;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onReset, onShare, onSaveCopy, onContinue, onNextIssue, nextIssueLabel, issue = 1, soundEffects, comicLanguage }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBook, onDownload, onDownloadSeries, downloadSeriesLabel, onReset, onShare, onSaveCopy, onContinue, onNextIssue, nextIssueLabel, issue = 1, soundEffects, comicLanguage }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
     if (face.isLoading && !face.imageUrl) return <LoadingFX sounds={soundEffects} />;
     
@@ -56,7 +59,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
                     <p className="text-white font-comic text-2xl uppercase tracking-widest animate-pulse">{t('panel.choicePrompt')}</p>
                     {face.choices.map((choice, i) => (
                         <button key={i} onClick={(e) => { e.stopPropagation(); if(face.pageIndex) onChoice(face.pageIndex, choice); }}
-                          className={`comic-btn w-full py-3 text-xl font-bold tracking-wider ${i===0?'bg-yellow-400 hover:bg-yellow-300':'bg-blue-500 text-white hover:bg-blue-400'}`}>
+                          className={`comic-btn w-full py-3 text-xl font-bold tracking-wider ${i===0?'btn-primary':'btn-blue'}`}>
                             {choice}
                         </button>
                     ))}
@@ -68,7 +71,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
                  <div className="absolute bottom-20 inset-x-0 flex justify-center z-20">
                      <button onClick={(e) => { e.stopPropagation(); onOpenBook(); }}
                       disabled={!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl}
-                      className="comic-btn bg-yellow-400 px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:bg-gray-400 disabled:cursor-wait">
+                      className="comic-btn btn-primary px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:cursor-wait">
                          {(!allFaces.find(f => f.pageIndex === GATE_PAGE)?.imageUrl) ? tFor(comicLanguage, 'panel.printing', { done: allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length, total: INITIAL_PAGES }) : tFor(comicLanguage, 'panel.readIssue', { issue })}
                      </button>
                  </div>
@@ -77,11 +80,12 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, onChoice, onOpenBo
             {/* Back Cover Actions */}
             {face.type === 'back_cover' && (
                 <div className={`absolute inset-x-0 flex flex-col items-center z-20 ${onNextIssue ? 'bottom-28 gap-3' : 'bottom-24 gap-4'}`}>
-                    {onNextIssue && <button onClick={(e) => { e.stopPropagation(); onNextIssue(); }} className="comic-btn bg-yellow-400 text-black px-8 py-4 text-2xl font-bold hover:scale-105">{nextIssueLabel} {'\u25BA'}</button>}
-                    <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="comic-btn bg-blue-500 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('panel.download')}</button>
-                    {onSaveCopy && <button onClick={(e) => { e.stopPropagation(); onSaveCopy(); }} className="comic-btn bg-purple-600 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('copy.button')}</button>}
-                    {onContinue && <button onClick={(e) => { e.stopPropagation(); onContinue(); }} className="comic-btn bg-red-600 text-white px-8 py-3 text-xl font-bold hover:scale-105">{t('continue.button')}</button>}
-                    <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="comic-btn bg-green-500 text-white px-8 py-4 text-2xl font-bold hover:scale-105">{t('panel.backToMenu')}</button>
+                    {onNextIssue && <button onClick={(e) => { e.stopPropagation(); onNextIssue(); }} className="comic-btn btn-primary px-8 py-4 text-2xl font-bold hover:scale-105">{nextIssueLabel} {'\u25BA'}</button>}
+                    <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="comic-btn btn-blue px-8 py-3 text-xl font-bold hover:scale-105">{t('panel.download')}</button>
+                    {onDownloadSeries && <button onClick={(e) => { e.stopPropagation(); onDownloadSeries(); }} className="comic-btn btn-blue px-8 py-3 text-xl font-bold uppercase hover:scale-105">{downloadSeriesLabel}</button>}
+                    {onSaveCopy && <button onClick={(e) => { e.stopPropagation(); onSaveCopy(); }} className="comic-btn btn-blue px-8 py-3 text-xl font-bold hover:scale-105">{t('copy.button')}</button>}
+                    {onContinue && <button onClick={(e) => { e.stopPropagation(); onContinue(); }} className="comic-btn btn-primary px-8 py-3 text-xl font-bold hover:scale-105">{t('continue.button')}</button>}
+                    <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="comic-btn btn-white px-8 py-4 text-2xl font-bold hover:scale-105">{t('panel.backToMenu')}</button>
                 </div>
             )}
         </div>

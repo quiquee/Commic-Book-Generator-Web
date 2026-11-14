@@ -5,15 +5,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.webmanifest">
-    <meta name="theme-color" content="#facc15">
+    <meta name="theme-color" content="#01122e">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <title>Mundos Cruzados (beta)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Bangers for titles, Comic Neue for text -->
     <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // The colours of the Mundos Cruzados logo: a navy night, a blue world, an orange world and yellow lettering.
+      // "black" is the logo's navy ink, so every outline, dark panel and dark text in the app takes it.
+      tailwind.config = { theme: { extend: { colors: {
+        black: '#050f2c',
+        brand: { navy: '#01122e', ink: '#050f2c', blue: '#0b74c9', 'blue-deep': '#044a94', sky: '#19c8f0', yellow: '#ffd60a', orange: '#fe7a00', 'orange-deep': '#f25c05' },
+      } } } };
+    </script>
     <style>
       :root {
+        --mc-navy: #01122e;
+        --mc-ink: #050f2c;
+        --mc-blue: #0b74c9;
+        --mc-blue-deep: #044a94;
+        --mc-sky: #19c8f0;
+        --mc-yellow: #ffd60a;
+        --mc-orange: #fe7a00;
+        --mc-orange-deep: #f25c05;
         /* 2:3 Aspect Ratio: 500w / 750h. Matches classic comic book ratio. 
            We use min(80vh, 750px) to ensure it fits in the viewport even on desktop. */
         --page-height: min(100vh, 100dvh, 75vw);
@@ -25,10 +43,15 @@
         content: "";
         position: fixed;
         inset: 0;
-        background-color: #222;
-        background-image: radial-gradient(#333 15%, transparent 16%), radial-gradient(#333 15%, transparent 16%);
-        background-size: 60px 60px;
-        background-position: 0 0, 30px 30px;
+        /* The logo's night sky: a blue glow on one side, an orange one on the other, over halftone dots. */
+        background-color: var(--mc-navy);
+        background-image:
+          radial-gradient(circle at 10% 15%, rgba(11, 116, 201, 0.42), transparent 45%),
+          radial-gradient(circle at 90% 85%, rgba(254, 122, 0, 0.28), transparent 45%),
+          radial-gradient(rgba(25, 200, 240, 0.13) 15%, transparent 16%),
+          radial-gradient(rgba(25, 200, 240, 0.13) 15%, transparent 16%);
+        background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+        background-position: 0 0, 0 0, 0 0, 18px 18px;
         z-index: -1;
         pointer-events: none;
       }
@@ -200,8 +223,8 @@
       .comic-btn {
         font-family: 'Bangers', cursive;
         letter-spacing: 1.5px;
-        border: 3px solid black;
-        box-shadow: 5px 5px 0px black;
+        border: 3px solid var(--mc-ink);
+        box-shadow: 5px 5px 0px var(--mc-ink);
         transition: all 0.1s ease;
         text-transform: uppercase;
         cursor: pointer;
@@ -209,15 +232,45 @@
       }
       .comic-btn:hover:not(:disabled) {
         transform: translateZ(30px) translate(-2px, -2px);
-        box-shadow: 7px 7px 0px black;
+        box-shadow: 7px 7px 0px var(--mc-ink);
       }
       .comic-btn:active:not(:disabled) {
         transform: translateZ(30px) translate(3px, 3px);
-        box-shadow: 2px 2px 0px black;
+        box-shadow: 2px 2px 0px var(--mc-ink);
       }
       .comic-btn:disabled {
         filter: grayscale(80%); opacity: 0.7; cursor: wait;
       }
+
+      /* Button colours, by what the button is for. */
+      /* The way forward (start, read, continue): the logo's yellow-to-orange lettering. */
+      .btn-primary { background-image: linear-gradient(to bottom, #fde047 0%, #fdb813 45%, var(--mc-orange) 100%); color: var(--mc-ink); }
+      /* Everything else you can do (upload, open, download, share): the blue world. */
+      .btn-blue { background-image: linear-gradient(to bottom, #2aa5ee 0%, var(--mc-blue) 55%, #0a5fb8 100%); color: #fff; text-shadow: 1px 1px 0 rgba(5, 15, 44, 0.55); }
+      /* Small helpers (change, copy, redo). */
+      .btn-yellow { background-color: var(--mc-yellow); color: var(--mc-ink); }
+      /* Stepping back (cancel, close, back to menu). */
+      .btn-white { background-color: #fff; color: var(--mc-ink); }
+      /* Deleting. */
+      .btn-danger { background-color: #dc2626; color: #fff; }
+      .btn-primary:hover:not(:disabled), .btn-blue:hover:not(:disabled), .btn-yellow:hover:not(:disabled), .btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+      .btn-white:hover:not(:disabled) { background-color: #fff7cc; }
+      .btn-primary:disabled, .btn-blue:disabled, .btn-yellow:disabled, .btn-white:disabled, .btn-danger:disabled {
+        background-image: none; background-color: #9aa3b5; color: #fff; text-shadow: none;
+      }
+
+      /* The dark strip that carries the name, as on the logo. */
+      .brand-banner {
+        background-color: var(--mc-navy);
+        background-image:
+          radial-gradient(circle at 12% 40%, rgba(11, 116, 201, 0.6), transparent 55%),
+          radial-gradient(circle at 88% 60%, rgba(254, 122, 0, 0.45), transparent 55%),
+          radial-gradient(rgba(255, 255, 255, 0.08) 18%, transparent 19%);
+        background-size: 100% 100%, 100% 100%, 10px 10px;
+      }
+      .logo-word { font-family: 'Bangers', cursive; letter-spacing: 0.03em; display: inline-block; -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(2px 3px 0 rgba(0, 4, 20, 0.85)); padding: 0 0.05em; }
+      .logo-word-mundos { background-image: linear-gradient(to bottom, #fce304 15%, #fdb813 50%, #fe6801 90%); }
+      .logo-word-cruzados { background-image: linear-gradient(to bottom, #ffffff 35%, #b9d6f2 90%); }
 
       @media (max-width: 768px) {
         /* On mobile, maintain aspect ratio but ensure it fits in viewport (width OR height) 

@@ -149,7 +149,7 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
                 {error && <p role="alert" className="text-red-700">{error}</p>}
             </div>
             {!!invitation.stories?.length && (
-                <section className="text-left border-4 border-black bg-green-50 p-3 mb-4">
+                <section className="text-left border-4 border-black bg-sky-50 p-3 mb-4">
                     <h2 className="font-comic text-2xl">{t('guest.sharedTitle')}</h2>
                     <p className="text-sm mb-2">{t('guest.sharedHint', { host: invitation.hostName })}</p>
                     <ul className="flex flex-col gap-2">
@@ -159,7 +159,7 @@ export function GuestSetup({ credentials, onOpenStory }: GuestSetupProps) {
                                     <p className="font-comic text-lg">{summary.title}</p>
                                     <p className="text-xs text-gray-700">{t('library.pages', { done: summary.completedPages, total: summary.totalPages })} · {formatDate(summary.updatedAt)}</p>
                                 </div>
-                                <button type="button" onClick={() => onOpenStory(summary.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('common.open')}</button>
+                                <button type="button" onClick={() => onOpenStory(summary.id)} className="comic-btn btn-blue px-3 py-2">{t('common.open')}</button>
                             </li>
                         ))}
                     </ul>

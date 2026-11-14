@@ -197,6 +197,19 @@ export interface AdminOverview {
     budget: { dailyBudgetUsd: number; dailyTokenLimit: number; todayCostUsd: number; todayTokens: number };
     pricingConfigured: boolean;
     pricingVersion: string | null;
+    // The rates in force today, and the dated changes still to come.
+    pricingModels: Record<string, ModelRates>;
+    pricingChanges: { from: string; version: string; models: Record<string, ModelRates> }[];
+}
+
+// US$ per million tokens. A rate the price file leaves out is missing here too.
+export type ModelRates = Partial<Record<'inputText' | 'inputImage' | 'outputText' | 'outputImage', number>>;
+
+// What pricing the calls recorded without a cost gave.
+export interface PricedCalls {
+    priced: number;
+    costUsd: number;
+    remaining: number;
 }
 
 export class AdminAuthError extends Error {
@@ -242,7 +255,7 @@ export const formatDate = (timestamp: number | null | undefined) =>
 export const formatNumber = (value: number) => numberFormat.format(Math.round(value));
 
 export function formatCost(totals: { costUsd: number; uncostedCalls: number }): string {
-    if (totals.uncostedCalls > 0 && totals.costUsd === 0) return 'sin tarifa';
+    if (totals.uncostedCalls > 0 && totals.costUsd === 0) return t('admin.unpriced');
     const amount = `${totals.costUsd.toLocaleString(intlLocale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} US$`;
     return totals.uncostedCalls > 0 ? t('admin.costPlusUncosted', { amount, count: totals.uncostedCalls }) : amount;
 }

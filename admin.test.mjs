@@ -45,7 +45,9 @@ async function fixture(t, options = {}) {
     listStories: () => [...accounting].map(([id, value]) => ({ id, ...value })),
     overview: () => ({ totals: totals(7), today: totals(3), last7Days: totals(7), last30Days: totals(7),
       daily: [], draftsUnassigned: { calls: 0, costUsd: 0, tokens: totals().tokens } }),
-    pricingStatus: () => ({ pricingConfigured: true, pricingVersion: 'test-v1' }),
+    pricingStatus: () => ({ pricingConfigured: true, pricingVersion: 'test-v1',
+      pricingModels: { test: { inputText: 1 } }, pricingChanges: [] }),
+    priceUncosted: () => ({ priced: 2, costUsd: 0.5, remaining: 1 }),
   };
   const handler = createAdminHandler({
     adminPassword: 'correct', auditFile: join(directory, 'private', 'audit.jsonl'), usage,
@@ -206,6 +208,8 @@ test('overview includes retained accounting, story counts, budgets and pricing',
   assert.deepEqual(result.budget, { dailyBudgetUsd: 20, dailyTokenLimit: 1000, todayCostUsd: 3, todayTokens: 100 });
   assert.equal(result.pricingConfigured, true);
   assert.equal(result.pricingVersion, 'test-v1');
+  assert.deepEqual(result.pricingModels, { test: { inputText: 1 } });
+  assert.deepEqual(result.pricingChanges, []);
   assert.equal(result.totals.costUsd, 7);
 });
 
@@ -284,6 +288,19 @@ test('CSV has BOM, exact columns, quoting, and neutralizes formula cells', async
   assert.ok(text.includes(`"'@Guest"`));
   assert.ok(text.includes('"deleted"'));
   assert.doesNotMatch(text, /OWNER_SECRET|base64/);
+});
+
+test('pricing the calls without a cost needs a session and the admin header, and is audited', async (t) => {
+  const { request, login, directory } = await fixture(t);
+  assert.equal((await request('/api/admin/usage/price', { method: 'POST', headers: { 'X-Admin-Request': '1' } })).status, 401);
+  const { cookie } = await login();
+  assert.equal((await request('/api/admin/usage/price', { method: 'POST', headers: { Cookie: cookie } })).status, 403);
+  assert.equal((await request('/api/admin/usage/price', { headers: { Cookie: cookie } })).status, 404);
+  const response = await request('/api/admin/usage/price', { method: 'POST', headers: { Cookie: cookie, 'X-Admin-Request': '1' } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { priced: 2, costUsd: 0.5, remaining: 1 });
+  const lines = (await readFile(join(directory, 'private', 'audit.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(lines.filter((entry) => entry.action === 'usage_price').length, 1);
 });
 
 test('deletion requires mutation protections, retains usage and audits privately', async (t) => {

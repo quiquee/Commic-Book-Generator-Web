@@ -3,6 +3,7 @@ import { errorMessage } from './invitations';
 import { t } from './i18n';
 import { fetchStory, fetchStoryDelta, formatDate, loadStoryKeys, saveStoryKeys, deleteStory, type StoryDocument, type StoryKey, type StoryMeta } from './stories';
 import { groupLibrary } from './seriesLogic';
+import { downloadSeriesPdf } from './seriesPdf';
 
 interface StoryLibraryProps {
     onOpen: (storyId: string) => void;
@@ -21,6 +22,8 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
     const [redoingId, setRedoingId] = useState<string | null>(null);
     // Series whose issues are listed.
     const [openSeries, setOpenSeries] = useState<string[]>([]);
+    // The series whose PDF is being put together, and how far it is.
+    const [seriesPdf, setSeriesPdf] = useState<{ id: string; done: number; total: number } | null>(null);
 
     useEffect(() => {
         try {
@@ -111,6 +114,19 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
         }
     };
 
+    // The whole series in one PDF: the branch of the reader's latest issue, from the first issue on.
+    const downloadSeries = async (seriesId: string, key: StoryKey) => {
+        setSeriesPdf({ id: seriesId, done: 0, total: 0 });
+        setError('');
+        try {
+            await downloadSeriesPdf(key.id, { kind: 'owner', token: key.ownerToken }, { onProgress: (done, total) => setSeriesPdf({ id: seriesId, done, total }) });
+        } catch (failure) {
+            setError(t('series.pdfFailed', { reason: errorMessage(failure) }));
+        } finally {
+            setSeriesPdf(null);
+        }
+    };
+
     if (!keys.length) return null;
 
     const keyOf = new Map(keys.map(key => [key.id, key]));
@@ -123,31 +139,31 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
     const issueOf = (meta: StoryMeta) => meta.series?.issue ?? meta.continuation?.issue ?? 1;
 
     const deleteButtons = (confirmKey: string, confirmLabel: string, label: string, onConfirm: () => void) => confirmId !== confirmKey
-        ? <button type="button" onClick={() => setConfirmId(confirmKey)} className="comic-btn bg-red-600 text-white px-3 py-2">{label}</button>
+        ? <button type="button" onClick={() => setConfirmId(confirmKey)} className="comic-btn btn-danger px-3 py-2">{label}</button>
         : <>
-            <button type="button" onClick={onConfirm} className="comic-btn bg-red-700 text-white px-3 py-2">{confirmLabel}</button>
-            <button type="button" onClick={() => setConfirmId(null)} className="comic-btn bg-gray-200 px-3 py-2">{t('common.cancel')}</button>
+            <button type="button" onClick={onConfirm} className="comic-btn btn-danger px-3 py-2">{confirmLabel}</button>
+            <button type="button" onClick={() => setConfirmId(null)} className="comic-btn btn-white px-3 py-2">{t('common.cancel')}</button>
         </>;
 
     // One comic: on its own row, or as an issue inside its series (where only the last issue can be deleted alone).
     const comicRow = (meta: StoryMeta, { inSeries = false, deletable = true } = {}) => {
         const key = keyOf.get(meta.id)!;
         return (
-            <li key={meta.id} className={`border-2 border-black p-2 flex flex-wrap items-center gap-2 ${inSeries ? 'bg-green-50' : 'bg-white'}`}>
+            <li key={meta.id} className={`border-2 border-black p-2 flex flex-wrap items-center gap-2 ${inSeries ? 'bg-sky-50' : 'bg-white'}`}>
                 <div className="flex-1 min-w-[12rem]">
                     <p className="font-comic text-lg">{meta.title}{(inSeries || issueOf(meta) > 1) && <span className="text-xs font-sans ml-2 border border-black px-1">{t('library.issue', { issue: issueOf(meta) })}</span>}</p>
                     <p className="text-xs text-gray-700">{t('library.pages', { done: meta.completedPages, total: meta.totalPages })} · {formatDate(meta.updatedAt)}{meta.guestName ? ` · ${t('library.with', { name: meta.guestName })}` : ''}{!inSeries && meta.ownerAlias ? ` · ${t('library.alias', { alias: meta.ownerAlias })}` : ''}</p>
                 </div>
-                <button type="button" onClick={() => onOpen(meta.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{finished(meta) ? t('common.read') : t('common.continue')}</button>
-                {!inSeries && finished(meta) && <button type="button" onClick={() => continueSeries(key)} disabled={redoingId !== null} className="comic-btn bg-red-600 text-white px-3 py-2">{redoingId === key.id ? t('common.loading') : t('continue.button')}</button>}
-                <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title={t('library.redoHint')} className="comic-btn bg-yellow-400 text-black px-3 py-2">{redoingId === key.id ? t('common.loading') : t('library.redo')}</button>
+                <button type="button" onClick={() => onOpen(meta.id)} className="comic-btn btn-blue px-3 py-2">{finished(meta) ? t('common.read') : t('common.continue')}</button>
+                {!inSeries && finished(meta) && <button type="button" onClick={() => continueSeries(key)} disabled={redoingId !== null} className="comic-btn btn-primary px-3 py-2">{redoingId === key.id ? t('common.loading') : t('continue.button')}</button>}
+                <button type="button" onClick={() => redo(key)} disabled={redoingId !== null} title={t('library.redoHint')} className="comic-btn btn-yellow px-3 py-2">{redoingId === key.id ? t('common.loading') : t('library.redo')}</button>
                 {deletable && deleteButtons(meta.id, t('common.confirmDelete'), t('common.delete'), () => remove(key))}
             </li>
         );
     };
 
     return (
-        <section className="border-4 border-black bg-green-50 p-3 mb-4 text-left">
+        <section className="border-4 border-black bg-sky-50 p-3 mb-4 text-left">
             <h2 className="font-comic text-2xl">{t('library.title')}</h2>
             <p className="text-sm mb-2">{t('library.hint')}</p>
             {error && <p role="alert" className="text-red-700 font-bold mb-2">{error}</p>}
@@ -167,12 +183,14 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
                                     <p className="font-comic text-lg">{group.name}<span className="text-xs font-sans ml-2 border border-black bg-yellow-200 px-1">{t('library.seriesTag')}</span></p>
                                     <p className="text-xs text-gray-700">{t('library.seriesSummary', { issues: group.issues, pages: group.pages })} · {formatDate(group.updatedAt)}{guests.length ? ` · ${t('library.with', { name: guests.join(', ') })}` : ''}{aliases.length ? ` · ${t('library.alias', { alias: aliases.join(', ') })}` : ''}</p>
                                 </div>
-                                <button type="button" onClick={() => onOpen(group.comics[0].id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('common.read')}</button>
+                                <button type="button" onClick={() => onOpen(group.comics[0].id)} className="comic-btn btn-blue px-3 py-2">{t('common.read')}</button>
                                 {finished(group.last)
-                                    ? <button type="button" onClick={() => continueSeries(lastKey)} disabled={redoingId !== null} className="comic-btn bg-red-600 text-white px-3 py-2">{redoingId === lastKey.id ? t('common.loading') : t('continue.button')}</button>
-                                    : <button type="button" onClick={() => onOpen(group.last.id)} className="comic-btn bg-blue-500 text-white px-3 py-2">{t('library.continueIssue', { issue: lastIssue })}</button>}
+                                    ? <button type="button" onClick={() => continueSeries(lastKey)} disabled={redoingId !== null} className="comic-btn btn-primary px-3 py-2">{redoingId === lastKey.id ? t('common.loading') : t('continue.button')}</button>
+                                    : <button type="button" onClick={() => onOpen(group.last.id)} className="comic-btn btn-primary px-3 py-2">{t('library.continueIssue', { issue: lastIssue })}</button>}
+                                <button type="button" onClick={() => downloadSeries(group.id, lastKey)} disabled={seriesPdf !== null} className="comic-btn btn-blue px-3 py-2">
+                                    {seriesPdf?.id !== group.id ? t('library.seriesPdf') : seriesPdf.total ? t('series.pdfProgress', { done: seriesPdf.done, total: seriesPdf.total }) : t('common.loading')}</button>
                                 <button type="button" onClick={() => setOpenSeries(open ? openSeries.filter(id => id !== group.id) : [...openSeries, group.id])} aria-expanded={open}
-                                  className="comic-btn bg-gray-200 px-3 py-2">{open ? t('library.hideIssues') : t('library.showIssues')} {open ? '▴' : '▾'}</button>
+                                  className="comic-btn btn-white px-3 py-2">{open ? t('library.hideIssues') : t('library.showIssues')} {open ? '▴' : '▾'}</button>
                                 {deleteButtons(confirmKey, t('library.confirmDeleteSeries', { count: group.comics.length }), t('library.deleteSeries'), () => removeSeries(group.comics.map(meta => keyOf.get(meta.id)!)))}
                             </div>
                             {open && <>
@@ -192,7 +210,7 @@ export function StoryLibrary({ onOpen, onRedo, onContinue, onTitlesLoaded }: Sto
                                 <p className="font-comic text-lg">{missing ? t('library.unavailable') : t('common.loading')}</p>
                                 {missing && <p className="text-xs text-gray-700">{t('library.gone')}</p>}
                             </div>
-                            {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn bg-gray-200 px-3 py-2">{t('library.forget')}</button>}
+                            {missing && <button type="button" onClick={() => forget(key.id)} className="comic-btn btn-white px-3 py-2">{t('library.forget')}</button>}
                         </li>
                     );
                 })}

@@ -408,7 +408,7 @@ const App: React.FC = () => {
   return (
     <div className="comic-scene">
       <MusicPlayer mood={route.story ? storyMood : null} />
-      <button type="button" onClick={returnToMainMenu} className="fixed bottom-2 left-2 z-[500] comic-btn bg-yellow-400/90 text-black px-2 py-1 text-base">{t('nav.mainMenu')}</button>
+      <button type="button" onClick={returnToMainMenu} className="fixed bottom-2 left-2 z-[500] comic-btn btn-yellow px-2 py-1 text-base">{t('nav.mainMenu')}</button>
       {appError && <div role="alert" className="fixed top-16 left-4 right-4 z-[500] border-2 border-red-800 bg-white p-3 text-red-800">
           {appError} <button type="button" className="underline ml-2" onClick={() => setAppError('')}>{t('common.closeNotice')}</button>
       </div>}
